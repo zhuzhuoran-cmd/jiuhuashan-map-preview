@@ -4,7 +4,7 @@
 <title>九华山 · 三维实地导览</title><link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="mobile.css"><script type="importmap">{"imports":{"three":"./vendor/build/three.module.js","three/addons/":"./vendor/examples/jsm/"}}</script>
 </head><body><main id="app">
-<div id="stage" role="img" aria-label="九华山可交互三维模型：拖动旋转，滚轮缩放，右键平移"></div>
+<div id="stage" role="img" aria-label="九华山可交互三维模型：单指拖动旋转，双指开合缩放，双指同向滑动平移"></div>
 
 <header class="brand glass">
  <div class="brand-row"><div class="seal" aria-hidden="true">九<br>华</div><div class="brand-text"><h1>九华山</h1><p>三维实地导览 · 走近九华</p></div></div>
@@ -16,6 +16,46 @@
 </header>
 
 <nav class="viewbar glass" aria-label="地图视角"><span class="seg-ind" aria-hidden="true"></span><button data-view="town" class="active">九华街</button><button data-view="all">全山</button><button data-view="top">俯视</button><button data-view="baisui">百岁宫</button><button data-view="tiantai">天台</button></nav>
+
+<button id="help-open" class="help-open glass" type="button" aria-controls="gesture-tour" aria-label="操作指南，重播手势动画"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.9c0 1.9-2.4 2-2.4 3.6M12 16.5h.01"/></svg><span>操作指南</span></button>
+
+<section id="gesture-tour" class="gesture-tour" aria-label="地图操作动画" hidden>
+ <svg class="gesture-symbols" aria-hidden="true"><defs>
+  <path id="guide-one-finger" d="M37 65V26c0-11 15-11 15 0v24c0-10 14-10 14 0v6c0-9 13-9 13 0v6c0-8 12-8 12 1v14c0 15-10 24-24 24H54c-8 0-14-4-19-10L17 70c-8-9 3-19 11-12l16 15"/>
+  <path id="guide-two-fingers" d="M31 63V28c0-11 14-11 14 0v20h4V16c0-11 14-11 14 0v33c0-10 14-10 14 1v6c0-9 13-8 13 2v15c0 15-10 26-25 26H55c-9 0-15-4-20-10L16 68c-7-8 3-17 10-10l16 16"/>
+ </defs></svg>
+ <div class="tour-steps">
+  <div class="tour-step" data-gesture="pan" aria-hidden="true">
+   <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
+    <path class="gesture-arrow" d="M15 61h150m-9-8 9 8-9 8M24 53l-9 8 9 8"/>
+    <g class="touch-art pan-hand"><use class="gesture-hand" href="#guide-two-fingers" transform="translate(36 4)"/><circle class="touch-halo" cx="74" cy="28" r="11"/><circle class="touch-halo" cx="92" cy="16" r="11"/></g>
+   </svg>
+   <span class="tour-step-label">01 / 03 · 移动机位</span>
+   <strong data-tour-title>双指同向滑动</strong>
+   <p data-tour-description>保持两指间距，平移到旁边看看</p>
+  </div>
+  <div class="tour-step" data-gesture="rotate" aria-hidden="true">
+   <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
+    <path class="gesture-arrow" d="M22 48c29-31 107-31 136 0m-1-12 1 12-12-1M23 36l-1 12 12-1"/>
+    <g class="touch-art rotate-hand"><use class="gesture-hand" href="#guide-one-finger" transform="translate(36 7)"/><circle class="touch-halo" cx="80" cy="31" r="11"/></g>
+   </svg>
+   <span class="tour-step-label">02 / 03 · 旋转视角</span>
+   <strong data-tour-title>单指拖动</strong>
+   <p data-tour-description>左右环看，上下调整俯仰角度</p>
+  </div>
+  <div class="tour-step" data-gesture="zoom" aria-hidden="true">
+   <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
+    <g class="touch-art"><path class="gesture-arrow" d="M19 38h48m-39-8-9 8 9 8m85-8h48m-9-8 9 8-9 8"/><g class="spread-left"><use class="gesture-hand" href="#guide-one-finger" transform="translate(24 24) scale(.62)"/></g><g class="spread-right"><use class="gesture-hand" href="#guide-one-finger" transform="translate(156 24) scale(-.62 .62)"/></g></g>
+   </svg>
+   <span class="tour-step-label">03 / 03 · 拉近拉远</span>
+   <strong data-tour-title>双指开合</strong>
+   <p data-tour-description>张开拉近，捏合拉远</p>
+  </div>
+ </div>
+ <div class="tour-progress" aria-hidden="true"><i></i><i></i><i></i></div>
+ <p class="tour-return">找不到方向？点「九华街」回到初始视角</p>
+ <button id="tour-skip" class="tour-skip" type="button">跳过演示 <span aria-hidden="true">×</span></button>
+</section>
 
 <aside id="panel" class="directory glass" aria-label="地点搜索">
  <div class="sheet-grip" aria-hidden="true"></div>

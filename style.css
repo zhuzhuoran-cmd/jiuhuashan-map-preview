@@ -52,6 +52,41 @@ canvas{display:block}
 @media(hover:hover){.viewbar button:hover{color:var(--ink)}}.viewbar button.active{color:#fff}
 .seg-ind{position:absolute;z-index:0;top:4px;bottom:4px;left:0;width:var(--ind-w,0);transform:translateX(var(--ind-x,0));opacity:var(--ind-o,0);border-radius:10px;background:var(--ink);box-shadow:0 4px 12px -4px rgba(31,58,49,.55);transition:transform .38s var(--ease),width .38s var(--ease),opacity .2s}
 
+/* ---- translucent entry tour: only the small skip button captures input ---- */
+.help-open{position:absolute;top:246px;left:20px;z-index:4;display:flex;align-items:center;gap:7px;min-height:40px;padding:8px 13px;font-size:12px;border-radius:999px;background:rgba(251,250,246,.8)}
+.help-open svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.gesture-tour{position:absolute;left:50%;top:48%;width:min(310px,calc(100vw - 36px));z-index:8;transform:translate(-50%,-50%);pointer-events:none;text-align:center;opacity:0;transition:opacity .6s ease;isolation:isolate;color:#243e31}
+body.with-panel .gesture-tour{left:calc(50% - 160px)}
+.gesture-tour.show{opacity:1}
+.gesture-tour::before{content:"";position:absolute;inset:-32px -38px;z-index:-1;background:rgba(250,249,239,.74);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);mask-image:radial-gradient(ellipse,#000 35%,transparent 73%);-webkit-mask-image:radial-gradient(ellipse,#000 35%,transparent 73%);pointer-events:none}
+.gesture-symbols{position:absolute;width:0;height:0;overflow:hidden}
+.tour-steps{position:relative;height:210px}
+.tour-step{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;opacity:0;transform:translateY(5px);transition:opacity .36s ease,transform .36s ease}
+.tour-step.active{opacity:1;transform:none}
+.tour-art{width:180px;height:124px;flex:none;overflow:visible;opacity:.76;filter:drop-shadow(0 2px 3px rgba(255,255,245,.7))}
+.gesture-hand{fill:rgba(255,251,234,.8);stroke:#334c3e;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+.gesture-arrow{fill:none;stroke:#335743;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;opacity:.6;stroke-dasharray:4 5}
+.touch-halo{fill:rgba(255,255,248,.18);stroke:#57735f;stroke-width:1;opacity:.55}
+.tour-step-label{font-size:10px;letter-spacing:.13em;margin:5px 0 6px;opacity:.75}
+.tour-step strong{font:600 21px/1.4 var(--serif);letter-spacing:.08em;text-shadow:0 1px 8px rgba(255,255,245,.9)}
+.tour-step p{font-size:12.5px;line-height:1.6;margin:5px 0 0;color:#344f40;text-shadow:0 1px 5px rgba(255,255,245,.95)}
+.tour-progress{display:flex;justify-content:center;gap:6px;margin:7px 0 9px}
+.tour-progress i{height:3px;width:14px;border-radius:8px;background:rgba(41,72,51,.18);transition:background .3s,width .3s}
+.tour-progress i.active{width:25px;background:rgba(41,72,51,.65)}
+.tour-return{font-size:10.5px;margin:0;line-height:1.5;color:#46614e;text-shadow:0 1px 5px #fff}
+.tour-skip{min-width:72px;min-height:40px;margin:1px auto 0;padding:8px;color:#46614e;font-size:11px;pointer-events:auto;text-shadow:0 1px 5px #fff;border-radius:12px}
+.tour-skip span{margin-left:4px;font-size:15px}
+.gesture-tour:not(.show) .tour-skip{pointer-events:none}
+@media(hover:hover){.help-open:hover{background:var(--glass-strong)}.tour-skip:hover{background:rgba(255,255,245,.3)}}
+.tour-step.active .pan-hand{animation:guide-pan 1.65s ease-in-out infinite;transform-origin:90px 65px}
+.tour-step.active .rotate-hand{animation:guide-rotate 1.8s ease-in-out infinite;transform-origin:90px 108px}
+.tour-step.active .spread-left{animation:guide-spread-left 1.65s ease-in-out infinite}
+.tour-step.active .spread-right{animation:guide-spread-right 1.65s ease-in-out infinite}
+@keyframes guide-pan{0%,100%{transform:translateX(-19px)}50%{transform:translateX(19px)}}
+@keyframes guide-rotate{0%,100%{transform:translateX(-12px) rotate(-10deg)}50%{transform:translateX(12px) rotate(10deg)}}
+@keyframes guide-spread-left{0%,100%{transform:translateX(9px)}50%{transform:translateX(-14px)}}
+@keyframes guide-spread-right{0%,100%{transform:translateX(-9px)}50%{transform:translateX(14px)}}
+
 /* ---- search panel (slides in from the right) ---- */
 .directory{position:absolute;top:20px;right:20px;bottom:52px;width:300px;display:flex;flex-direction:column;overflow:hidden;z-index:4;
  transition:transform .42s var(--ease),opacity .3s var(--ease),visibility 0s linear 0s}

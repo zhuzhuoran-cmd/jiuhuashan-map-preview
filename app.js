@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
+import {setupInteractionGuide} from './interaction-guide.js';
+
+const interactionGuide=setupInteractionGuide();
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const compactViewport=()=>matchMedia('(max-width:820px), (max-width:960px) and (orientation:landscape) and (max-height:520px)').matches;let mobile=compactViewport();
@@ -1049,10 +1052,10 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  if(lowPower&&renderedLast)adaptDpr(dt,now);renderedLast=true;lastRender=now;
  const distance=camera.position.distanceTo(controls.target);for(const g of detailedGroups)g.visible=distance<4000;
  if(featuredPin){const d=camera.position.distanceTo(featuredPin.position),k=clamp(d/160,1,26);featuredPin.scale.setScalar(k);featuredPin.rotation.y=now/1400;const fp=featured;if(fp?.label)fp.label.position.y=(featuredPin.userData.base+featuredPin.userData.head*k)*EX+2*k;}
- if(frame++%7===0){updateLabels();const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':'九华山全景 · 滚轮靠近';const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
+ if(frame++%7===0){updateLabels();const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':'九华山全景 · 双指缩放';const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
  renderer.render(scene,camera);labels.render(scene,camera);if(frame===30)console.info('Map verification',JSON.stringify(window.mapDiagnostics));
 }
-started=true;$('#loading').classList.add('done');setTimeout(()=>$('#loading').hidden=true,700);requestAnimationFrame(tick);
+started=true;$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;interactionGuide.start();},700);requestAnimationFrame(tick);
 // Inspectable public diagnostics are also useful for verifying delivery, without private app state.
 window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;}};
 }

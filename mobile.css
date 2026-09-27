@@ -22,6 +22,8 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
  .viewbar{top:calc(74px + var(--safe-top));left:10px;max-width:calc(100vw - 20px);overflow-x:auto;scrollbar-width:none;border-radius:13px}
  .viewbar::-webkit-scrollbar{display:none}
  .viewbar button{min-height:36px;padding:7px 12px;white-space:nowrap;touch-action:manipulation}
+ .help-open{top:calc(126px + var(--safe-top));left:10px;min-height:40px;padding:8px 12px;font-size:11.5px}
+ .gesture-tour,body.with-panel .gesture-tour{left:50%;top:49%}
  /* bottom sheets */
  .directory,.info-card,#data-dialog{left:10px;right:10px;width:auto;border-radius:20px 20px 16px 16px;bottom:calc(62px + var(--safe-bottom) + var(--keyboard-inset,0px))}
  .directory{top:auto;height:min(calc(var(--visible-height,100dvh)*.5),420px);z-index:6;transform:none}
@@ -68,6 +70,9 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
  .directory{height:calc(var(--visible-height,100dvh)*.52)}.list-summary{display:none}
  .info-card{max-height:calc(var(--visible-height,100dvh)*.45)}.card-hero img{height:84px} /* leave the chosen place room above the card */
 }
+@media(max-width:360px) and (orientation:portrait){
+ .gesture-tour,body.with-panel .gesture-tour{left:calc(50% - 18px);width:230px}
+}
 /* phones held sideways: sheets become a right-hand column */
 @media(max-width:960px) and (orientation:landscape) and (max-height:520px){
  :root{--r:14px}
@@ -75,6 +80,9 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
  .brand-row{padding:0 0 0 2px;gap:6px;flex:none}.seal{width:28px;height:28px;font-size:10px}.brand h1{font-size:16px}.brand p{display:none}
  .featured-cta{flex:1;padding:4px 8px 4px 4px;border-radius:10px}.cta-pin{width:24px;height:24px}.cta-text small{display:none}
  .viewbar{top:56px;left:9px}.viewbar button{min-height:32px;padding:5px 10px;font-size:11.5px}
+ .help-open{top:104px;left:calc(9px + env(safe-area-inset-left,0px));min-height:36px}
+ .gesture-tour,body.with-panel .gesture-tour{left:50%;top:50%;width:280px}
+ .tour-steps{height:168px}.tour-art{height:91px;width:132px}.tour-step strong{font-size:19px}.tour-return{font-size:10px}.tour-skip{min-height:32px}
  .directory,.info-card,#data-dialog{left:auto;right:10px;top:auto;width:min(42vw,390px);bottom:10px;max-height:calc(100dvh - 20px);border-radius:16px}
  .directory{height:calc(100dvh - 20px);transform:none}.directory.closed{transform:translateX(calc(100% + 24px))}
  .info-card{transform:translateX(calc(100% + 30px));transition:transform .42s var(--ease)}.info-card.show{transform:none}.info-card::before{display:none}
