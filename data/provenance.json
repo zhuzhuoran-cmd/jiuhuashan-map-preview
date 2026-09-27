@@ -1,0 +1,1514 @@
+{
+ "date": "2026-09-27",
+ "stats": {
+  "buildings": 1424,
+  "roads": 147,
+  "water": 18,
+  "places": 1187,
+  "businesses": 815,
+  "osmBuildings": 892,
+  "supplementaryBuildings": 532,
+  "lodging": 614,
+  "food": 154,
+  "mappedPlaces": 47,
+  "convertedListings": 440,
+  "legacyPlaces": 6,
+  "shops": 47,
+  "temples": 111,
+  "sights": 146,
+  "villages": 37,
+  "services": 62,
+  "transport": 16,
+  "halls": 85,
+  "multiSource": 49,
+  "platformListings": 302,
+  "unverifiedListings": 338,
+  "businessesLinkedToBuildings": 413,
+  "namedRoadSegments": 6,
+  "userConfirmed": 2
+ },
+ "extent": {
+  "origin": {
+   "lat": 30.482,
+   "lon": 117.8115
+  },
+  "kx": 95950.0,
+  "ky": 110900.0,
+  "crs": "WGS84 / local east-south metres",
+  "bounds": [
+   117.78299973944762,
+   30.457,
+   117.84000026055237,
+   30.506999999999998
+  ]
+ },
+ "architecture": {
+  "retrievedAt": "2026-09-26",
+  "method": "Documentary descriptions, not a measured digital twin. Footprints supply horizontal geometry; facade details remain inferred.",
+  "sources": {
+   "plan": {
+    "url": "https://www.jiuhuashan.gov.cn/file_cz/54/202506/202506269aaa0b14711f440284eefd14e047a66e.pdf",
+    "title": "九华山地质公园规划",
+    "pdfPages": [
+     78,
+     79,
+     80
+    ],
+    "printedPages": [
+     72,
+     73,
+     74
+    ]
+   },
+   "currentItinerary": {
+    "url": "https://www.jiuhuashan.gov.cn/jhsdzgy/Content/show/773420.html",
+    "title": "九华山一日游：7小时经典路线"
+   },
+   "culturalInventory": {
+    "url": "https://www.jiuhuashan.gov.cn/Content/show/300307.html",
+    "title": "九华山人文资源一览表"
+   },
+   "photo": {
+    "url": "https://www.jiuhuashan.gov.cn/Content/show/770111.html",
+    "imageUrl": "https://www.jiuhuashan.gov.cn/file_cz/54/content_base64_images/770111_145576a92585482bb8ad1f778c3929d0.png",
+    "usage": "Reference only; image reuse license not established"
+   },
+   "templeVisit2016": {
+    "url": "https://www.temple.mebou.org/event_detail.php?event_id=69",
+    "title": "2016妙觉心善寺九华山联合朝圣参访（旃檀林）",
+    "sourceType": "firsthand_temple_visit",
+    "date": "2016-10-10"
+   },
+   "panoramaZhantan": {
+    "url": "https://www.360cities.net/image/jiuhuashan-316a-panorama-cube-equi",
+    "title": "Jiuhuashan Sandalwood Palace Temple (316) 旃檀禅林",
+    "sourceType": "photographer_panorama",
+    "usage": "Visual reference/link only; reuse license not established"
+   }
+  },
+  "landmarks": [
+   {
+    "id": "huacheng",
+    "name": "化城寺",
+    "source": "plan",
+    "sourcePrintedPage": 72,
+    "documented": {
+     "courtyardSequences": 4,
+     "terraceLevels": 3,
+     "roof": "硬山",
+     "gable": "马头墙",
+     "structure": "砖木",
+     "entryDepthM": 16.5,
+     "entryBays": 5,
+     "tianwangWidthM": 20,
+     "tianwangDepthM": 20.5,
+     "mainHallDepthM": 20.5,
+     "sutraDepthM": 14,
+     "terraceRisesM": [
+      3.7,
+      1.5,
+      2.7
+     ]
+    },
+    "visuallyObserved": {
+     "source": "photo",
+     "wall": "白",
+     "roof": "旧青褐瓦",
+     "archedEntranceCount": 3,
+     "details": [
+      "红灯笼",
+      "石阶",
+      "双石狮",
+      "石砌池岸",
+      "木窗"
+     ]
+    },
+    "uncertain": {
+     "sutraHeightM": 20,
+     "sutraLevelsInPlan": 3,
+     "note": "其他资料藏经楼有2层说法，层高未实测"
+    },
+    "renderingInference": "四进院落与分级台地，不宜统一黄色宫殿屋顶"
+   },
+   {
+    "id": "qiyuan",
+    "name": "祇园寺",
+    "aliases": [
+     "祗园寺",
+     "祇园禅寺"
+    ],
+    "source": "plan",
+    "sourcePrintedPage": 72,
+    "documented": {
+     "principalStructures": 9,
+     "palaceHalls": [
+      "弥勒殿",
+      "大雄宝殿"
+     ],
+     "otherBuildingsStyle": "民居",
+     "layout": "依坡紧凑错落"
+    },
+    "uncertain": {
+     "hallHeightsM": null,
+     "exactRidgeOrientation": null
+    },
+    "renderingInference": "取轮廓长轴定屋脊，主殿与寮房区别"
+   },
+   {
+    "id": "baisui",
+    "name": "百岁宫",
+    "source": "plan",
+    "sourcePrintedPage": 72,
+    "documented": {
+     "compoundLevels": 5,
+     "mainHallWidthM": 19,
+     "mainHallDepthM": 14,
+     "roof": "天井四面内落水",
+     "slopeDirection": "南高北低"
+    },
+    "uncertain": {
+     "excludedEastWallHeightM": 55,
+     "reason": "源文55m与5层比例异常，未独立验证，不采用"
+    },
+    "renderingInference": "悬崖连续楼体，正面低背面高，避免孤立塔楼"
+   },
+   {
+    "id": "roushen",
+    "name": "肉身宝殿",
+    "aliases": [
+     "月身宝殿"
+    ],
+    "source": "plan",
+    "sourcePrintedPage": 72,
+    "documented": {
+     "hallHeightM": 15,
+     "depthM": 16,
+     "frontBays": 3,
+     "stoneColumnCount": 20,
+     "roof": "重檐歇山",
+     "tile": "铁瓦",
+     "wall": "红",
+     "entranceDirection": "北",
+     "frontPlatform": "半月形"
+    },
+    "uncertain": {
+     "interiorTowerHeightM": 17,
+     "reason": "塔17m与殿15m基准不明，不渲染穿顶塔"
+    },
+    "renderingInference": "暗色双檐、石柱环廊、山坡台阶"
+   },
+   {
+    "id": "zhantan",
+    "name": "旃檀禅林",
+    "aliases": [
+     "旃檀林"
+    ],
+    "source": "plan",
+    "sourcePrintedPage": 73,
+    "documented": {
+     "historicMainHallWidthM": 11.5,
+     "historicMainHallDepthM": 15.5,
+     "historicMainHallHeightM": 18,
+     "eastDormitoryLevels": 3,
+     "westDormitoryLevels": 2,
+     "historicRoof": "歇山"
+    },
+    "currentVisualDescription": {
+     "source": "templeVisit2016",
+     "halls": [
+      "大悲宝殿",
+      "华严宝殿",
+      "大愿宝殿"
+     ],
+     "hallOrder": "入口视角从左到右",
+     "hallLayout": "坐南朝北，品字形",
+     "roof": "琉璃瓦重檐歇山",
+     "gate": "四柱三门大理石牌楼，三层叠檐",
+     "sourceDate": "2016-10-10"
+    },
+    "uncertain": {
+     "newHallDimensionsM": null,
+     "warning": "旧大雄殿尺寸不能套给三大新殿",
+     "hallNamingConflict": "官方一日游网页写大悲/大愿/大行；参访记录写大悲/华严/大愿，同文又称大雄殿。展示建议保留整体旃檀禅林名称，不将大行作为核实标签。"
+    },
+    "renderingInference": "三大体量与宽阶，历史寮房保留小天井"
+   },
+   {
+    "id": "shangchan",
+    "name": "上禅堂",
+    "source": "plan",
+    "sourcePrintedPage": 73,
+    "documented": {
+     "heightM": 10,
+     "widthM": 14,
+     "depthM": 28.5,
+     "entryWallDirection": "东",
+     "terraceLevels": 3
+    }
+   },
+   {
+    "id": "wanfo",
+    "name": "万佛塔",
+    "source": "plan",
+    "sourcePrintedPage": 74,
+    "documented": {
+     "heightM": 33,
+     "levels": 7,
+     "sides": 8,
+     "material": "铜"
+    }
+   },
+   {
+    "id": "julongtemple",
+    "name": "聚龙寺",
+    "source": "plan",
+    "sourcePrintedPage": 73,
+    "documented": {
+     "levels": 2,
+     "orientation": "坐北朝南",
+     "style": "民居"
+    }
+   },
+   {
+    "id": "yingxianbridge",
+    "name": "迎仙桥",
+    "source": "culturalInventory",
+    "documented": {
+     "spanM": 7,
+     "lengthM": 9.2,
+     "widthM": 5.4,
+     "heightM": 5.5,
+     "archCount": 1,
+     "material": "石",
+     "type": "实腹拱"
+    }
+   }
+  ],
+  "confidencePolicy": {
+   "documented": "源文断言，可能年代较旧，不代表本次测绘",
+   "visuallyObserved": "仅代表已查看照片角度和拍摄时状态",
+   "renderingInference": "展示推断，非逐房测量",
+   "unknownDimensions": "null，不补伪精确数值"
+  }
+ },
+ "qualityAudit": [
+  {
+   "name": "九华山东崖宾馆",
+   "action": "merged",
+   "oldQuality": "legacy_estimate",
+   "distanceM": 41
+  },
+  {
+   "name": "九华山聚龙大酒店",
+   "action": "merged",
+   "oldQuality": "mapped",
+   "distanceM": 27
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "萬佛塔",
+   "id": "dc89ea62-95fa-40e3-a788-5ef30f01af48",
+   "distanceM": 7,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "古拜經台",
+   "id": "7d107c04-22b9-40cf-b247-d95fefef944a",
+   "distanceM": 632,
+   "action": "quarantined_coordinate_conflict",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "九華山天台",
+   "id": "1ed35c26-4993-4755-87f0-fbbd6d211945",
+   "distanceM": 85,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "天台禅寺",
+   "id": "f692b791-0b89-46d4-894f-221822ed4a0a",
+   "distanceM": 0,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "慧居寺",
+   "id": "a407d457-6ed1-406e-8d3d-4c62f92ea2ce",
+   "distanceM": 1604,
+   "action": "quarantined_coordinate_conflict",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture",
+   "name": "天台索道。九華山",
+   "action": "candidate_not_promoted",
+   "reason": "ambiguous identity or uncorroborated coordinates"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "化城寺",
+   "id": "7eda5edf-77db-4307-85d6-71d19df17aa0",
+   "distanceM": 1174,
+   "action": "quarantined_coordinate_conflict",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture",
+   "name": "九华山   Mount Jiuhua",
+   "action": "candidate_not_promoted",
+   "reason": "ambiguous identity or uncorroborated coordinates"
+  },
+  {
+   "dataset": "Overture",
+   "name": "Jiuhuashan, Anhui Province",
+   "action": "candidate_not_promoted",
+   "reason": "ambiguous identity or uncorroborated coordinates"
+  },
+  {
+   "dataset": "Overture",
+   "name": "九華山天台景區",
+   "action": "candidate_not_promoted",
+   "reason": "ambiguous identity or uncorroborated coordinates"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "聚龙宾馆",
+   "id": "f278fb4b-7301-4e9c-b1e2-d3b9302dbf03",
+   "distanceM": 69,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "九華山聚龍大酒店",
+   "id": "0862af2c-bd9a-44d6-94fa-1253e2ed87d6",
+   "distanceM": 51,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture",
+   "name": "九華山-地藏王菩薩道場",
+   "action": "candidate_not_promoted",
+   "reason": "ambiguous identity or uncorroborated coordinates"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "祇園禪寺",
+   "id": "318f151a-7d43-4a94-add1-8c3d030a9a65",
+   "distanceM": 58,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "百歲宮",
+   "id": "1496cb5b-4518-4e0c-b6ac-443eb894eca7",
+   "distanceM": 228,
+   "action": "quarantined_coordinate_conflict",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "东崖宾馆",
+   "id": "82b03c1b-26ac-4f6c-8b78-835159eba87d",
+   "distanceM": 38,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "九华山 祈园禅寺",
+   "id": "d7d6f9ce-0b9c-4d84-aab4-523f2ab0086c",
+   "distanceM": 100,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "九華山觀音峰",
+   "id": "c564b515-d7a0-4255-a8f2-b588893999ba",
+   "distanceM": 2446,
+   "action": "quarantined_coordinate_conflict",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture",
+   "name": "地藏禅寺",
+   "action": "candidate_not_promoted",
+   "reason": "ambiguous identity or uncorroborated coordinates"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "化城寺。九華山",
+   "id": "e3939247-f275-4a37-9ce0-775a0d839331",
+   "distanceM": 12,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "九華山上襌堂",
+   "id": "77651ecd-6674-4e46-8d1a-0ef6053ef1b9",
+   "distanceM": 121,
+   "action": "quarantined_coordinate_conflict",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "九華山 護國月身寶塔",
+   "id": "b348ec73-6dfa-4636-8058-0a6282fe5643",
+   "distanceM": 47,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "肉身殿",
+   "id": "6969a4b6-9c4d-4e40-bcbe-f29846300221",
+   "distanceM": 71,
+   "action": "corroboration_only",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  },
+  {
+   "dataset": "Overture",
+   "name": "祗园寺",
+   "action": "candidate_not_promoted",
+   "reason": "ambiguous identity or uncorroborated coordinates"
+  },
+  {
+   "dataset": "Overture 2026-09-23.1",
+   "name": "甘露寺",
+   "id": "04e63f2c-93f3-4c2b-8433-78055f812072",
+   "distanceM": 1202,
+   "action": "quarantined_coordinate_conflict",
+   "reason": "retained stronger OSM footprint or explicitly typed BD09 source"
+  }
+ ],
+ "businessCountScope": "地点记录，不是独立经营主体数，不是全量普查。酒店与自营餐厅可能分列。",
+ "buildingHeightQuality": "All heights inferred; no surveyed building height attributes available.",
+ "facadeQuality": "Architectural interpretation, not photogrammetry; no facade photo textures distributed.",
+ "forestQuality": "Procedural vegetation excluding mapped streets and buildings, not tree inventory.",
+ "licenses": [
+  {
+   "data": "OpenStreetMap footprints and transport",
+   "license": "ODbL",
+   "url": "https://www.openstreetmap.org/copyright"
+  },
+  {
+   "data": "Overture places",
+   "license": "CDLA-Permissive-2.0",
+   "url": "https://docs.overturemaps.org/attribution/"
+  },
+  {
+   "code": "coordtransform 2.1.2",
+   "license": "MIT",
+   "url": "https://github.com/wandergis/coordtransform"
+  },
+  {
+   "data": "Overture buildings release 2026-09-23.1",
+   "license": "ODbL",
+   "url": "https://docs.overturemaps.org/attribution/"
+  },
+  {
+   "data": "East Asia building footprints by Qian Shi et al. (2023), supplied through Overture",
+   "license": "CC BY 4.0",
+   "url": "https://doi.org/10.5281/zenodo.8174931",
+   "modifications": "clipped, deduplicated, simplified and extruded with inferred roofs"
+  }
+ ],
+ "round3": {
+  "inputs": {
+   "lodging-ctrip": 364,
+   "food-shop-ctrip": 93,
+   "other-platforms": 1000,
+   "temples-sights": 389,
+   "streets-villages": 86,
+   "open-data": 123
+  },
+  "method": "research/r3/*.json (each independently verified: research/r3/verify-*.json) → scripts/r3/dedupe.py (union-find over ids, cross-checks, legacy resolutions and normalised names) → scripts/r3/merge.py",
+  "tiers": {
+   "mapped": "OSM",
+   "converted_listing": "Ctrip public listing coordinate (BD-09/GCJ-02 → WGS84)",
+   "multi_source": "two or more independent platforms agree",
+   "platform_listing": "one platform (Qunar / 360 / OSM-derived)",
+   "unverified_listing": "single-platform lodging/food not on Ctrip, or low confidence; current operation not verified",
+   "legacy_estimate": "round-1 estimate without a published coordinate"
+  },
+  "heldBack": [
+   {
+    "name": "茂居餐厅",
+    "reason": "dining outlet of a listed lodging at the same premises",
+    "members": [
+     "fsc|ctrip-restaurant:154659080"
+    ]
+   },
+   {
+    "name": "宁家饭店餐饮",
+    "reason": "low-confidence Ctrip record (verifier)",
+    "members": [
+     "fsc|ctrip-restaurant:153601390"
+    ]
+   },
+   {
+    "name": "绿滋肴",
+    "reason": "low-confidence Ctrip record (verifier)",
+    "members": [
+     "fsc|ctrip-shop:10567717"
+    ]
+   },
+   {
+    "name": "地藏禅寺",
+    "reason": "open-data copy only (Overture/Wikidata pins are unreliable here; verifier)",
+    "members": [
+     "od|overture:e207ba72-17ae-49e9-8fae-0121c438c507"
+    ]
+   },
+   {
+    "name": "九华镇",
+    "reason": "open-data copy only (Overture/Wikidata pins are unreliable here; verifier)",
+    "members": [
+     "od|wikidata:Q10878705"
+    ]
+   },
+   {
+    "name": "九华山丹丹山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山白月元民宿(百岁宫缆车店)']",
+    "members": [
+     "op|360map:bc5a12d1c2fe5f1c"
+    ]
+   },
+   {
+    "name": "九华山久缘山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['静幽南·九华山云涧民宿']",
+    "members": [
+     "op|360map:e317ba69bb69019a"
+    ]
+   },
+   {
+    "name": "九华山九华街依山凡舍民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山书生雅居客栈(肉身宝殿店)']",
+    "members": [
+     "op|360map:aecc5120a910aab3"
+    ]
+   },
+   {
+    "name": "九华山了了晴山·山野民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山空空之外·山野民宿(九华山上店)']",
+    "members": [
+     "op|360map:f41abd0342400376"
+    ]
+   },
+   {
+    "name": "九华山云上酒家",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山肉身宝殿·云上民宿']",
+    "members": [
+     "op|360map:05673c63511cba27"
+    ]
+   },
+   {
+    "name": "九华山云涧民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['静幽南·九华山云涧民宿']",
+    "members": [
+     "op|360map:d3c8decd8f420eb9"
+    ]
+   },
+   {
+    "name": "九华山云糺小舍",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山家美山庄']",
+    "members": [
+     "op|360map:7c111024494d5712"
+    ]
+   },
+   {
+    "name": "九华山云起山居",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['云深山居·庭院美宿(九华山上化城寺店)']",
+    "members": [
+     "op|360map:0642ca2cb5923207",
+     "op|360map:aa1d55f6e88b83cc"
+    ]
+   },
+   {
+    "name": "九华山何家别墅",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山巷里民宿(化城寺店)']",
+    "members": [
+     "op|360map:32ad368fccec3e37"
+    ]
+   },
+   {
+    "name": "九华山佛山旅社",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山大屋小栈民宿']",
+    "members": [
+     "op|360map:b797313dc9470cc9"
+    ]
+   },
+   {
+    "name": "九华山佛山缘人家",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['一池山水·朝九华院子里·亲子花园度假民宿(九华山肉身宝殿店)']",
+    "members": [
+     "op|360map:7804e761298554f6"
+    ]
+   },
+   {
+    "name": "九华山佛轩阁客栈",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['和悦山色民宿(九华山景区店)']",
+    "members": [
+     "op|360map:f903661e102ddd3a"
+    ]
+   },
+   {
+    "name": "九华山军华山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山云缦里民宿(九华山上店)']",
+    "members": [
+     "op|360map:49eee0258c245c57"
+    ]
+   },
+   {
+    "name": "九华山华云山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山华云兰舍民宿']",
+    "members": [
+     "op|360map:eb1a652ef193f0ef"
+    ]
+   },
+   {
+    "name": "九华山华文山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['花筑·九华山松悦楼民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:ce3b264563c84c06"
+    ]
+   },
+   {
+    "name": "九华山同发雅宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山同发民宿(化城寺店)']",
+    "members": [
+     "op|360map:d4a8b404814edff4"
+    ]
+   },
+   {
+    "name": "九华山同泰酒店",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['上海饭店(芙蓉路店)']",
+    "members": [
+     "op|360map:d06c7ccef2aeb39b"
+    ]
+   },
+   {
+    "name": "九华山天然居酒店",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['东红农家乐']",
+    "members": [
+     "op|360map:c4445fa30c7bdf73"
+    ]
+   },
+   {
+    "name": "九华山如意山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山惜遇云谷度假民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:1e5a7ed9a4239932"
+    ]
+   },
+   {
+    "name": "九华山山村小院",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山一粟民宿(九华山上店)']",
+    "members": [
+     "op|360map:1bf4e343bce91c71"
+    ]
+   },
+   {
+    "name": "九华山平霞饭店",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山览山民宿(天台索道店)']",
+    "members": [
+     "op|360map:87078fa050b70e7a"
+    ]
+   },
+   {
+    "name": "九华山徽韵山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['花筑·九华山尊曼印象民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:06ebe19d09dab313"
+    ]
+   },
+   {
+    "name": "九华山心竺十二程民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['心竺十二程Pilgrim Twelve眠与山海·朝圣美宿(九华山肉身宝殿店)']",
+    "members": [
+     "op|360map:e5c0f8731fa0a3ad"
+    ]
+   },
+   {
+    "name": "九华山惜遇奢民宿(月身宝殿店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山来筑·一山七舍民宿(月身宝殿店)']",
+    "members": [
+     "op|360map:7c20b68d68d4d4c2"
+    ]
+   },
+   {
+    "name": "九华山文缘客栈",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山弘九山居(化城寺店)']",
+    "members": [
+     "op|360map:f0e431376e66e7d4"
+    ]
+   },
+   {
+    "name": "九华山无竹山涧民宿 (肉身宝殿店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['贵正竹居·休闲庭院·Mountain观山礼佛民宿(九华山上九华街店)']",
+    "members": [
+     "op|360map:4bc80af59e961d4f"
+    ]
+   },
+   {
+    "name": "九华山时光与水民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山宜铭悠居民宿']",
+    "members": [
+     "op|360map:ad9bcf5e42c8e79e"
+    ]
+   },
+   {
+    "name": "九华山时光小栈",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山禾雨民宿']",
+    "members": [
+     "op|360map:46a43d4a63298fa8"
+    ]
+   },
+   {
+    "name": "九华山旺角宾馆",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['刘掌柜民宿', '九华山福施缘民宿']",
+    "members": [
+     "op|360map:4d28a3f3fa03485a"
+    ]
+   },
+   {
+    "name": "九华山朴宿栖澜",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山桃红酒家住宿']",
+    "members": [
+     "op|360map:365329b92238baf8"
+    ]
+   },
+   {
+    "name": "九华山朴院·私享阳台亲子漫途观山美宿(化城寺店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山朴院·私享阳台｜亲子漫途｜观山美宿(化城寺店)']",
+    "members": [
+     "op|360map:a41063c1a1d5f904"
+    ]
+   },
+   {
+    "name": "九华山朴院民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山朴院·私享阳台｜亲子漫途｜观山美宿(化城寺店)']",
+    "members": [
+     "op|360map:9b2c714e7d537ea1"
+    ]
+   },
+   {
+    "name": "九华山来舍民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['云深山居·庭院美宿(化城寺店)']",
+    "members": [
+     "op|360map:486015ed47d64081"
+    ]
+   },
+   {
+    "name": "九华山杰雅民宿(芙蓉路分店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山风景区静庭轻雅民宿']",
+    "members": [
+     "op|360map:e538503067329625"
+    ]
+   },
+   {
+    "name": "九华山林间小屋",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山一二·概念民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:fc39ffd43078428b"
+    ]
+   },
+   {
+    "name": "九华山梵尘民宿(肉身宝殿店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山山上·梵尘民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:57a6a5b37f6dd62d"
+    ]
+   },
+   {
+    "name": "九华山清香阁",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['花筑·九华山盛茵云栖民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:eb60b55b9b72df6b"
+    ]
+   },
+   {
+    "name": "九华山满红农家乐",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山满红农家乐']",
+    "members": [
+     "op|360map:ceb93c7cdec5aa4b"
+    ]
+   },
+   {
+    "name": "九华山满缘云居",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['清念山·悠野民宿(九华山上店)']",
+    "members": [
+     "op|360map:f3aa0e03890066d0"
+    ]
+   },
+   {
+    "name": "九华山灵山土菜馆",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['灵山常悦居(九华山店)']",
+    "members": [
+     "op|360map:a9a5acf5af5add6a"
+    ]
+   },
+   {
+    "name": "九华山玖栖云庭民宿(九华山山上店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['玖栖雲庭·Courtyard全智能山景度假美宿(九华山肉身宝殿店)']",
+    "members": [
+     "op|360map:8364e494f1e72b7f"
+    ]
+   },
+   {
+    "name": "九华山瑞景山居宾馆",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['仁和饭店(芙蓉路)']",
+    "members": [
+     "op|360map:fef81785b1e9cc4f"
+    ]
+   },
+   {
+    "name": "九华山红高粱酒店",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['云幕·星辰民宿(九华山上店)', '九华山南园伴舍民宿(化成寺店)']",
+    "members": [
+     "op|360map:4cba3fa400112cf3"
+    ]
+   },
+   {
+    "name": "九华山缘来小居",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['向南小筑(九华山肉身宝殿店)']",
+    "members": [
+     "op|360map:ae441267abde9dc5"
+    ]
+   },
+   {
+    "name": "九华山群英微酒店",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山南园伴舍民宿(化成寺店)', '灯塔酒楼']",
+    "members": [
+     "op|360map:196b3720fc70e576",
+     "op|360map:99219f807a961c74"
+    ]
+   },
+   {
+    "name": "九华山聚丰缘居民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山如壹民宿(化城寺店)', '九华山聚豐缘居民宿(九华山上祗园寺店)']",
+    "members": [
+     "op|360map:b345c6cd9cb3870d"
+    ]
+   },
+   {
+    "name": "九华山莲花山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山小罗客栈']",
+    "members": [
+     "op|360map:a3edb6e2b12799c8"
+    ]
+   },
+   {
+    "name": "九华山莲遇·三宿民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山玖山民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:2a795d83bc597a19"
+    ]
+   },
+   {
+    "name": "九华山莲里度假酒店",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['静幽南·九华山云涧民宿']",
+    "members": [
+     "op|360map:7730e6543f33dba0",
+     "op|360map:ab95c219cdc38cfd"
+    ]
+   },
+   {
+    "name": "九华山览华山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山彬华民宿(化城寺店)']",
+    "members": [
+     "op|360map:2608ff2657ddf856"
+    ]
+   },
+   {
+    "name": "九华山野风斋山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['安楠雅筑民宿(九华山肉身宝殿店)']",
+    "members": [
+     "op|360map:7f20121491dfc42f"
+    ]
+   },
+   {
+    "name": "九华山金风山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['花筑·九华山松悦楼民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:6b0f0f56594919e5"
+    ]
+   },
+   {
+    "name": "九华山闵凤园饭店",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山闵凤园山庄民宿(山上店)']",
+    "members": [
+     "op|360map:47416816456db548"
+    ]
+   },
+   {
+    "name": "九华山闵园土菜馆农家乐",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山闵园土菜馆农家乐']",
+    "members": [
+     "op|360map:cdf65686a106b819"
+    ]
+   },
+   {
+    "name": "九华山阿鑫山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['玖栖雲庭·Courtyard全智能山景度假美宿(九华山肉身宝殿店)']",
+    "members": [
+     "op|360map:ee8ffd73b452d9be"
+    ]
+   },
+   {
+    "name": "九华山陆和居玲姐客栈(芙蓉路分店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山陆和居小院']",
+    "members": [
+     "op|360map:c29e6593acd392b7"
+    ]
+   },
+   {
+    "name": "九华山隐居山上店民宿(芙蓉路分店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山润泽民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:9f9a184a92fc0ab7"
+    ]
+   },
+   {
+    "name": "九华山隐居民宿酒店(原禅隐民宿)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山隐山云居民宿']",
+    "members": [
+     "op|360map:d3b45534ebd38a47"
+    ]
+   },
+   {
+    "name": "九华山静缘民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山静缘·360°全视野环山·禅院清居美宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:917213c5c879c903"
+    ]
+   },
+   {
+    "name": "九华山靠天农家乐",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山靠天农家乐']",
+    "members": [
+     "op|360map:f1013fac3ba9cf14"
+    ]
+   },
+   {
+    "name": "九华山风景区九龙岗农家乐",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山风景区九龙岗农家乐']",
+    "members": [
+     "op|360map:b75786a8623acd78"
+    ]
+   },
+   {
+    "name": "九华山风景区青峰隐民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['青峰隐·Hidden Peak|云岭寻幽雅宿(九华山祈园寺店)']",
+    "members": [
+     "op|360map:788a3b2a0d832db2"
+    ]
+   },
+   {
+    "name": "九华山香云地客栈",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['小屿私厨']",
+    "members": [
+     "op|360map:1aa6d50661e8a4f4",
+     "op|360map:cd1c34007a213a1c"
+    ]
+   },
+   {
+    "name": "九华山龙凤宾馆",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山紫栖民宿(凤凰松店)']",
+    "members": [
+     "op|360map:0ca2d161a78c527f"
+    ]
+   },
+   {
+    "name": "九朵莲·本愿精舍(九华山九华街店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['一池山水·九华街本愿精品民宿(九华山上九华街店)']",
+    "members": [
+     "op|360map:4d27d8c634645048"
+    ]
+   },
+   {
+    "name": "和泰酒楼(景山别墅东南)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['枣子树素食餐厅(肉身宝殿店)']",
+    "members": [
+     "op|360map:45c81a539cf2e9ac"
+    ]
+   },
+   {
+    "name": "壹山壹隐民宿(化城寺店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山上·壹山壹隐·山景影音·Prime Scenery 美墅(化城寺店)']",
+    "members": [
+     "op|360map:62a38867b3fa17e3"
+    ]
+   },
+   {
+    "name": "好运土菜馆",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山云想居', '九华山缘客临山庄(肉身宝殿店)']",
+    "members": [
+     "op|360map:588e833097acdb4c"
+    ]
+   },
+   {
+    "name": "尊曼印象酒店(九华山店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['花筑·九华山尊曼印象民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:026badd1e8c27cc3"
+    ]
+   },
+   {
+    "name": "小蒋土菜馆",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['囍德咖啡SEED COFFEE(九华山店)']",
+    "members": [
+     "op|360map:55e57d7e8a1ba829"
+    ]
+   },
+   {
+    "name": "山水民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山心灵驿栈精品民宿(九华街店)']",
+    "members": [
+     "op|360map:5b17356a33fb0f8a"
+    ]
+   },
+   {
+    "name": "岸香国际连锁酒店(九华山店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['岸香·璞隐居']",
+    "members": [
+     "op|360map:d1bbca73e57109e8"
+    ]
+   },
+   {
+    "name": "悠家池州店客栈(芙蓉路分店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山一粟民宿(九华山上店)']",
+    "members": [
+     "op|360map:feb3d25b111b3ae2"
+    ]
+   },
+   {
+    "name": "房东总子特色民宿(佛光大道分店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['一山小口胡同里民宿(化城寺店)']",
+    "members": [
+     "op|360map:da6ff63a1a061be6"
+    ]
+   },
+   {
+    "name": "朝九华·院子里民宿(九华街店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['一池山水·朝九华院子里·亲子花园度假民宿(九华山肉身宝殿店)']",
+    "members": [
+     "op|360map:dd18d9dc23fa48ed"
+    ]
+   },
+   {
+    "name": "池州九华山吉祥人家客栈(化城路店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山聚龙大酒店']",
+    "members": [
+     "op|360map:fc1c66fc404a901f"
+    ]
+   },
+   {
+    "name": "池州九朵莲·本愿九华山拓展庆功祈福公寓",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['一池山水·九华街本愿精品民宿(九华山上九华街店)']",
+    "members": [
+     "op|360map:63cea36d1b83145b"
+    ]
+   },
+   {
+    "name": "池州左岸雅居客栈(九华山风景区分店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山小罗客栈']",
+    "members": [
+     "op|360map:4e8b338fb35d361b"
+    ]
+   },
+   {
+    "name": "池州平霞明宿公寓",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['房东让和居士度假别墅(芙蓉路分店)']",
+    "members": [
+     "op|360map:e98a3b663258f7c1"
+    ]
+   },
+   {
+    "name": "池州志华山庄特色民宿(3号店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山景缘民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:d730e3de9e66ca86"
+    ]
+   },
+   {
+    "name": "池州灯塔酒楼客栈",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山小罗客栈']",
+    "members": [
+     "op|360map:8cc15f9acb62cf29"
+    ]
+   },
+   {
+    "name": "玉梅酒家",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['茂居餐厅']",
+    "members": [
+     "op|360map:589a6bad1d651d7f"
+    ]
+   },
+   {
+    "name": "罗记私房菜(龙池路店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山问水山居客栈']",
+    "members": [
+     "op|360map:566e71a649611d66"
+    ]
+   },
+   {
+    "name": "花筑·九华山静心朴宿民宿",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山华凌山庄']",
+    "members": [
+     "op|360map:2f94cfcb4c83dc6b"
+    ]
+   },
+   {
+    "name": "荣昌山庄(九华山店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['雅琳小院']",
+    "members": [
+     "op|360map:c157f748513b518f"
+    ]
+   },
+   {
+    "name": "蜜雪冰城(九华山风景区店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山鑫财山庄']",
+    "members": [
+     "op|360map:bc719f69b8b67cb5"
+    ]
+   },
+   {
+    "name": "途家房东220707169825度假别墅(芙蓉路分店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山山上·小钦家民宿']",
+    "members": [
+     "op|360map:f5f66deaec6db161"
+    ]
+   },
+   {
+    "name": "钟楼宾馆",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['钟楼美食城']",
+    "members": [
+     "op|360map:26e367e86157e97d"
+    ]
+   },
+   {
+    "name": "锦庭·静心朴宿民宿(九华山上店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山华凌山庄']",
+    "members": [
+     "op|360map:b51b80d4dcacfa6b"
+    ]
+   },
+   {
+    "name": "青阳志华山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山景缘民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:1507b274b74678fe"
+    ]
+   },
+   {
+    "name": "青阳禅居小院",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['一山小口胡同里民宿(化城寺店)']",
+    "members": [
+     "op|360map:51cdf051e0b5c1ad"
+    ]
+   },
+   {
+    "name": "青阳秀华山庄",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山景上民宿(肉身宝殿店)']",
+    "members": [
+     "op|360map:0e9afdac4f6eef0f"
+    ]
+   },
+   {
+    "name": "青阳笑妍山庄(3号店)",
+    "reason": "360-only pin within 5 m of Ctrip listing(s) ['九华山小罗客栈']",
+    "members": [
+     "op|360map:f748e448c88c02f2"
+    ]
+   }
+  ],
+  "unlocated": [
+   {
+    "name": "景区检票口",
+    "members": [
+     "geo:景区检票口"
+    ]
+   }
+  ],
+  "audit": {
+   "legacyMoved": [
+    {
+     "name": "飞来观音峰",
+     "movedM": 18,
+     "from": "ts|qunar:19972168",
+     "families": [
+      "qunar"
+     ]
+    },
+    {
+     "name": "睡佛观景台",
+     "movedM": 79,
+     "from": "ts|qunar:45982942",
+     "families": [
+      "qunar"
+     ]
+    },
+    {
+     "name": "回香阁",
+     "movedM": 82,
+     "from": "ts|qunar:8667246",
+     "families": [
+      "qunar"
+     ]
+    },
+    {
+     "name": "上禅堂",
+     "movedM": 93,
+     "from": "ts|qunar:8605529",
+     "families": [
+      "360",
+      "overture",
+      "qunar"
+     ]
+    },
+    {
+     "name": "净洁精舍",
+     "movedM": 14,
+     "from": "op|360map:e9f16725aea2cde5",
+     "families": [
+      "360",
+      "qunar"
+     ]
+    },
+    {
+     "name": "通慧禅林",
+     "movedM": 135,
+     "from": "ts|qunar:19977343",
+     "families": [
+      "360",
+      "qunar"
+     ]
+    },
+    {
+     "name": "闵公禅寺",
+     "movedM": 97,
+     "from": "ts|qunar:47163010",
+     "families": [
+      "360",
+      "qunar"
+     ]
+    },
+    {
+     "name": "天池古庵",
+     "movedM": 30,
+     "from": "ts|qunar:46281792",
+     "families": [
+      "360",
+      "qunar"
+     ]
+    },
+    {
+     "name": "龙庵",
+     "movedM": 50,
+     "from": "op|360map:4c730fc78838576e",
+     "families": [
+      "360"
+     ]
+    },
+    {
+     "name": "太白井",
+     "movedM": 266,
+     "from": "ts|qunar:51763322",
+     "families": [
+      "qunar"
+     ]
+    },
+    {
+     "name": "百岁宫缆车站",
+     "movedM": 13,
+     "from": "op|360map:4d9dea0199f4de4e",
+     "families": [
+      "360",
+      "osm"
+     ]
+    },
+    {
+     "name": "花台正顶",
+     "movedM": 217,
+     "from": "ts|qunar:47391731",
+     "families": [
+      "qunar"
+     ]
+    },
+    {
+     "name": "天台索道站",
+     "movedM": 20,
+     "from": "sv|osm:way/609568574",
+     "families": [
+      "360",
+      "osm"
+     ]
+    },
+    {
+     "name": "慧居寺",
+     "movedM": 433,
+     "from": "ts|qunar:9599652",
+     "families": [
+      "qunar"
+     ]
+    },
+    {
+     "name": "大觉禅寺",
+     "movedM": 358,
+     "from": "ts|qunar:47325808",
+     "families": [
+      "360",
+      "qunar"
+     ]
+    },
+    {
+     "name": "古拜经台",
+     "movedM": 318,
+     "from": "ts|qunar:9599659",
+     "families": [
+      "360",
+      "qunar"
+     ]
+    }
+   ],
+   "keptLegacy": [
+    {
+     "name": "九华山医院",
+     "reason": "九华镇卫生院 is a different facility 508 m away; hospital position unresolved",
+     "droppedMembers": [
+      "op|360map:c3919472a71ec50f",
+      "ts|map360:c3919472a71ec50f"
+     ]
+    },
+    {
+     "name": "闵园尼庵群",
+     "reason": "Qunar point is an area label (low confidence)",
+     "droppedMembers": [
+      "ts|qunar:8666711"
+     ]
+    },
+    {
+     "name": "观音峰",
+     "reason": "identity unresolved (4 candidates 0.57-2.45 km apart); the 360 point is the 天台 观音峰",
+     "droppedMembers": [
+      "op|360map:f60e06e2d9ba9608",
+      "ts|map360:f60e06e2d9ba9608",
+      "ts|qunar:57098730"
+     ]
+    }
+   ],
+   "removed": [
+    {
+     "name": "佛门戒石",
+     "reason": "no published position in any source (critic G4)"
+    }
+   ],
+   "villageNameAlreadyPlace": [
+    "小天台"
+   ],
+   "collapsedTwins": [
+    {
+     "kept": "竹林山庄(九华山肉身宝殿店)",
+     "dropped": "九华山竹林山庄"
+    },
+    {
+     "kept": "九华山妙有小巢民宿(肉身宝殿店)",
+     "dropped": "九华山妙有小巢民宿(肉身宝殿店)·中餐厅"
+    },
+    {
+     "kept": "九禧客栈(肉身宝殿店)",
+     "dropped": "九禧客栈(肉身宝殿店)·九禧私房菜馆"
+    },
+    {
+     "kept": "九华山集梦山居民宿(九华山上店)",
+     "dropped": "九华山集梦山居民宿(九华山上店)·集梦私房菜"
+    },
+    {
+     "kept": "九华山如山民宿(九华山上店)",
+     "dropped": "九华山·如山民宿(九华山上店)·如山mini餐厅"
+    },
+    {
+     "kept": "九华山九茗幽圃民宿(肉身宝殿店)",
+     "dropped": "九华山九茗幽圃民宿(肉身宝殿店)·徽菜馆（九华山店）"
+    },
+    {
+     "kept": "九华山香榭 ·里花园民宿(肉身宝殿店)",
+     "dropped": "九华山香榭 ·里花园民宿(肉身宝殿店)·餐厅"
+    },
+    {
+     "kept": "云深山居·庭院美宿(九华山上化城寺店)",
+     "dropped": "云深山居·庭院美宿(化城寺店)"
+    },
+    {
+     "kept": "停车场",
+     "dropped": "停车场"
+    },
+    {
+     "kept": "九华山吉祥农家乐",
+     "dropped": "吉祥农家乐(九华山二店)"
+    },
+    {
+     "kept": "金鸡饭店(九华山天台景区店)",
+     "dropped": "金鸡饭店"
+    }
+   ],
+   "hallWithoutParent": [
+    "二天门",
+    "旃檀林-方丈法堂"
+   ]
+  },
+  "blockedSources": [
+   "Amap search: verification HTML page",
+   "Amap www.amap.com/service/poiInfo: slider captcha page (1 probe)",
+   "Baidu Map search: need_recaptcha",
+   "Baidu map search API - response had anti_session need_recaptcha=true; not used further",
+   "Baidu map.baidu.com qt=s: need_recaptcha=true (1 probe)",
+   "Ctrip fetchHotelList JSON API (restapi/soa2/34951): requires anti-bot 'phantom-token' signature; unsigned request returns no data (ResultId 201). Not attempted further.",
+   "Ctrip you.ctrip.com/sight/jiuhuamountain182.html - returned the 携程旅行验证 captcha page in the earlier attempt; Ctrip sight pages not used further",
+   "Fliggy hotel list: login page with slider captcha on the 2nd request (map/rect list)",
+   "Mafengwo poi page (www.mafengwo.cn/poi/6330977.html) - served a JS probe/anti-bot shell instead of content; not used further",
+   "Mafengwo: anti-bot JS probe page (/C2WF946J0/probe.js)",
+   "Meituan: 403 Forbidden; Dianping: empty response",
+   "Tencent Map search: no session (errCode 115003)",
+   "Tencent Map web search: errCode 115003 \"no session\" (needs a browser session; not bypassed)",
+   "Tongcheng m.ly.com: captcha page",
+   "dmfw.mca.gov.cn: JS challenge",
+   "https://you.ctrip.com/map/JiuhuaMountain182.html (redirect to verify.ctrip.com captcha; not retried)",
+   "{'name': 'Foursquare OS Places', 'reason': 'data now gated behind login (Hugging Face gated dataset); public S3 prefix empty'}",
+   "{'name': 'zh.wikivoyage search API', 'reason': 'HTTP 429 rate limit (one request); geosearch on the same host had already returned 0 results'}",
+   "{'name': '中国·国家地名信息库 dmfw.mca.gov.cn', 'reason': 'HTTP 521 JavaScript challenge (anti-bot) on the public extent/search API'}"
+  ],
+  "notACensus": "Counts are located public listings inside the model extent after de-duplication, not a census of operating businesses."
+ },
+ "corrections": {
+  "removedBuildings": {
+   "overture-4fc4d145-0171-4681-b042-e07d96c284ef": "香炉石东侧大广场上的 44 × 18 米识别轮廓：Esri 影像上是广场西北角的一块长方形草坪，用户卫星图上是铺装广场，无建筑（用户 2026-09-27 指出）",
+   "overture-bcb25bf7-d08c-47df-bd94-258279c87f12": "同一广场东北边的 56 × 9 米识别长条：Esri 影像上是一排停放的车辆，看得到车顶，没有屋顶"
+  },
+  "addedAreas": {
+   "r4-plaza-xianglushi": "Esri World Imagery z18 描绘，并按用户 2026-09-27 标注的卫星图核对（广场边界为近似）",
+   "r4-plaza-lawn": "Esri World Imagery z18 描绘，并按用户 2026-09-27 标注的卫星图核对（广场边界为近似）"
+  },
+  "places": {
+   "神光岭广场": "用户确认名称，新增",
+   "肉身宝殿北门": "原去哪儿“行愿无尽”点位，按用户确认移到门楼并改名",
+   "九华山居之林民宿(肉身宝殿店)": "业主店铺：按实拍照片手工建模，点位移到模型中部"
+  },
+  "movedBuildings": {
+   "osm-way-609956401": "檀香缘民宿楼：用户 2026-09-27 指出离居之林太近，沿路向西平移 16 米",
+   "osm-way-609956404": "乡遇民宿楼：用户 2026-09-27 要求做小一点并往东挪，轮廓缩到 0.72 倍、改 3 层，沿路向东平移 7 米",
+   "osm-way-609956414": "归野慢山礼佛美宿楼：用户 2026-09-27 指出太高、从正面看挡住居之林，改为 2 层"
+  }
+ }
+}
