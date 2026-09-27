@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {createMapControls} from './map-input.js';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js';
 
@@ -39,7 +39,7 @@ renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();f
 const labels=new CSS2DRenderer();labels.domElement.className='labels';$('#stage').appendChild(labels.domElement);
 const scene=new THREE.Scene();scene.fog=new THREE.FogExp2('#ceded9',.000072);
 const world=new THREE.Group(),built=new THREE.Group(),forest=new THREE.Group(),trailGroup=new THREE.Group(),decor=new THREE.Group();scene.add(world);world.add(built,forest,trailGroup,decor);
-const camera=new THREE.PerspectiveCamera(43,1,.7,32000);const controls=new OrbitControls(camera,renderer.domElement);
+const camera=new THREE.PerspectiveCamera(43,1,.7,32000);const controls=createMapControls(camera,$('#stage'),onMapTap);
 controls.enableDamping=true;controls.dampingFactor=.075;controls.minDistance=10;controls.maxDistance=12500;controls.maxPolarAngle=Math.PI*.482;controls.zoomToCursor=true;controls.screenSpacePanning=false;
 scene.add(new THREE.HemisphereLight('#ebf4f2','#5c6552',1.35));const sun=new THREE.DirectionalLight('#fff2d9',2.65);sun.position.set(-2000,3400,-1100);sun.castShadow=shadows();sun.shadow.mapSize.set(4096,4096);Object.assign(sun.shadow.camera,{left:-850,right:850,top:850,bottom:-850,near:10,far:6500});sun.shadow.bias=-.0001;sun.shadow.normalBias=.7;scene.add(sun,sun.target);
 const color=c=>new THREE.Color(c);const mat=(c,more={})=>new THREE.MeshStandardMaterial({color:c,roughness:.9,metalness:0,...more});
@@ -947,19 +947,15 @@ function selectBuilding(b){cardToken++;deselect();const ml=b.positionQuality==='
  if(b.styleRule)d.append(node('p','',`外观依据（${({observed:'照片观察',documented:'文献记载',inferred:'推断',secondary:'二手资料'})[b.styleCertainty]||b.styleCertainty||'推断'}）：${b.styleRule}。逐栋楼层与门窗未经实测。`));
  d.append(sourceLinks({sources:[{name:'查看建筑数据来源',url:b.source}]}));card.append(d);
  const acts=node('div','card-actions'),btn=actionBtn('ghost',ORBIT_SVG,'环看这栋建筑');btn.onclick=()=>{saveHome();fly(pose(...b.center,Math.max(70,b.width*3),heading()+70,66));clearViews();};acts.append(btn);card.append(acts);}
-const ray=new THREE.Raycaster(),ndc=new THREE.Vector2(),pointers=new Set();let down=null,multiTouch=false;
-renderer.domElement.addEventListener('pointerdown',e=>{pointers.add(e.pointerId);if(pointers.size>1)multiTouch=true;else down={id:e.pointerId,x:e.clientX,y:e.clientY,time:performance.now()};});
-renderer.domElement.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);down=null;if(!pointers.size)multiTouch=false;});
-renderer.domElement.addEventListener('pointerup',e=>{
- const tap=down&&down.id===e.pointerId&&!multiTouch&&pointers.size===1&&performance.now()-down.time<550&&Math.hypot(e.clientX-down.x,e.clientY-down.y)<(e.pointerType==='mouse'?5:8);
- pointers.delete(e.pointerId);if(!pointers.size){multiTouch=false;down=null;}
- if(!tap||!built.visible)return;
+const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+function onMapTap(e){
+ if(!built.visible)return;
  ndc.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);ray.setFromCamera(ndc,camera);const hit=ray.intersectObjects(pickables,true)[0];
  if(!hit){if(mobile)closeCard();return;}
  let o=hit.object;while(o&&!o.userData.landmark)o=o.parent;
  if(o?.userData.landmark&&byName.has(o.userData.landmark)){selectPlace(byName.get(o.userData.landmark),false);return;}
  const i=hit.object.userData.triangleIds?.[hit.faceIndex];if(i>=0)selectBuilding(G.buildings[i]);
-});
+}
 
 function filtered(p){return(category==='all'||(GROUPS[category]||[category]).includes(p.category))&&(!search||p.searchable&&(p.n+' '+(p.address||'')+' '+(p.aliases||[]).join(' ')).includes(search));}
 function renderList(){const list=$('#place-list');list.replaceChildren();const found=places.filter(p=>p.searchable&&(filtered(p)||p===featured&&category==='all'&&!search)).sort((a,b)=>(b===featured)-(a===featured)||a.p-b.p||a.n.localeCompare(b.n,'zh-CN'));
