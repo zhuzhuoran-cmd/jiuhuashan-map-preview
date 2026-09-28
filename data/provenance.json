@@ -4,7 +4,7 @@
   "buildings": 1424,
   "roads": 147,
   "water": 18,
-  "places": 1187,
+  "places": 1188,
   "businesses": 815,
   "osmBuildings": 892,
   "supplementaryBuildings": 532,
@@ -25,7 +25,7 @@
   "unverifiedListings": 338,
   "businessesLinkedToBuildings": 413,
   "namedRoadSegments": 6,
-  "userConfirmed": 2
+  "userConfirmed": 3
  },
  "extent": {
   "origin": {
@@ -1503,7 +1503,9 @@
   "places": {
    "神光岭广场": "用户确认名称，新增",
    "肉身宝殿北门": "原去哪儿“行愿无尽”点位，按用户确认移到门楼并改名",
-   "九华山居之林民宿(肉身宝殿店)": "业主店铺：按实拍照片手工建模，点位移到模型中部"
+   "九华山居之林民宿(肉身宝殿店)": "业主店铺：按实拍照片手工建模，点位移到模型中部",
+   "三角洲车站": "用户标出位置并说明线路（去天台的景交车在此上车），新增",
+   "虎形山车站": "用户确认为景交车始发站、天台返程终点站"
   },
   "movedBuildings": {
    "osm-way-609956401": "檀香缘民宿楼：用户 2026-09-27 指出离居之林太近，沿路向西平移 16 米",

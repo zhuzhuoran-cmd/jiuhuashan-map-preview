@@ -57,15 +57,21 @@
  <button id="tour-skip" class="tour-skip" type="button">跳过演示 <span aria-hidden="true">×</span></button>
 </section>
 
-<aside id="panel" class="directory glass" aria-label="地点搜索">
+<aside id="panel" class="directory glass" aria-label="推荐路线与地点搜索">
  <div class="sheet-grip" aria-hidden="true"></div>
- <div class="panel-head"><div><span class="eyebrow">EXPLORE</span><h2>探索九华</h2></div><button id="panel-close" class="icon-btn" aria-label="收起地点面板"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+ <div class="panel-head"><div><span class="eyebrow">EXPLORE</span><h2>探索九华</h2></div><button id="panel-close" class="icon-btn" aria-label="收起面板"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+ <div class="panel-tabs" role="tablist" aria-label="面板内容"><button id="tab-btn-routes" role="tab" data-tab="routes" aria-selected="true" aria-controls="tab-routes">推荐路线</button><button id="tab-btn-places" role="tab" data-tab="places" aria-selected="false" aria-controls="tab-places">找地点</button><span class="tab-ind" aria-hidden="true"></span></div>
+ <div id="tab-routes" class="tab-pane routes-pane" role="tabpanel" aria-labelledby="tab-btn-routes"><div id="route-list" class="route-list"></div><div id="route-detail" class="route-detail" tabindex="0" role="region" aria-label="路线详情" hidden></div></div>
+ <div id="tab-places" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-places" hidden>
  <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" aria-label="搜索寺庙、景点或公共设施" placeholder="搜索寺庙、景点、车站、公厕…" autocomplete="off"></label>
  <div id="categories" class="categories"><button data-category="all" class="active">全部</button><button data-category="temple">寺庙</button><button data-category="sight">景点山水</button><button data-category="service">公共服务</button></div>
  <div class="list-summary" id="list-summary"></div>
  <div id="place-list" class="place-list" tabindex="0" role="region" aria-label="地点列表"></div>
+ </div>
  <button id="data-open" class="source-button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg><span>资料来源与精度说明</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
 </aside>
+<button id="routes-open" class="routes-open glass" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></svg>推荐路线</button>
+<div id="route-hud" class="route-hud glass" role="status" hidden><span class="rh-dot" aria-hidden="true"></span><div class="rh-text"><b></b><small></small></div><button class="rh-play icon-btn" type="button" aria-label="路线预演"></button><button class="rh-list" type="button">行程</button><button class="rh-close icon-btn" type="button" aria-label="关闭路线"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
 <button id="panel-open" class="panel-open glass"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>搜索地点</button>
 
 <section id="settings" class="settings glass">
@@ -103,4 +109,4 @@
 </div>
 <div id="viewer" class="viewer" role="dialog" aria-modal="true" aria-label="居之林民宿实拍照片" hidden><div class="viewer-strip"></div><button class="viewer-close icon-btn" type="button" aria-label="关闭照片"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button><button class="viewer-prev icon-btn" type="button" aria-label="上一张"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button><button class="viewer-next icon-btn" type="button" aria-label="下一张"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button><div class="viewer-count" aria-live="polite"></div></div>
 <div id="toast" role="status" hidden></div>
-</main><script type="module" src="app.js?v=20260928-label-gestures"></script></body></html>
+</main><script type="module" src="app.js?v=20260928-routes"></script></body></html>

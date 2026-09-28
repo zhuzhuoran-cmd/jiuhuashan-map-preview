@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import {createMapControls} from './map-input.js';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js';
+import {setupRoutes} from './routes.js';
+import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 
 const interactionGuide=setupInteractionGuide();
 
@@ -30,7 +32,10 @@ for(let i=0;i<H.length;i++)H[i]=dv.getUint16(i*2,true)/4;
 let EX=1;const hMin=Math.min(...H);
 function hAt(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-1),0,N-1.001),i=u|0,j=v|0,a=u-i,b=v-j;return(H[j*N+i]*(1-a)+H[j*N+i+1]*a)*(1-b)+(H[(j+1)*N+i]*(1-a)+H[(j+1)*N+i+1]*a)*b;}
 // No preserveDrawingBuffer: the capture button renders and copies in the same task, and keeping the buffer costs phones a copy per frame.
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
+// Low-power devices with dense screens skip MSAA: it doubles memory traffic on older mobile GPUs and the pixels are small.
+const renderer=new THREE.WebGLRenderer({antialias:!(lowPower&&devicePixelRatio>=2),alpha:true,powerPreference:'high-performance'});
+// Low-power devices also skip the frosted-glass blur behind panels (re-blurred every frame over the moving map): html.lite.
+document.documentElement.classList.toggle('lite',lowPower);
 let maxDpr=lowPower?1.5:2;const dprCap=()=>Math.min(devicePixelRatio,maxDpr,mobile?1.5:2),shadows=()=>!mobile&&!lowPower;
 renderer.setPixelRatio(dprCap());renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
 renderer.shadowMap.enabled=shadows();renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('#stage').appendChild(renderer.domElement);
@@ -42,16 +47,24 @@ const world=new THREE.Group(),built=new THREE.Group(),forest=new THREE.Group(),t
 const camera=new THREE.PerspectiveCamera(43,1,.7,32000);const controls=createMapControls(camera,$('#stage'),onMapTap);
 controls.enableDamping=true;controls.dampingFactor=.075;controls.minDistance=10;controls.maxDistance=12500;controls.maxPolarAngle=Math.PI*.482;controls.zoomToCursor=true;controls.screenSpacePanning=false;
 scene.add(new THREE.HemisphereLight('#ebf4f2','#5c6552',1.35));const sun=new THREE.DirectionalLight('#fff2d9',2.65);sun.position.set(-2000,3400,-1100);sun.castShadow=shadows();sun.shadow.mapSize.set(4096,4096);Object.assign(sun.shadow.camera,{left:-850,right:850,top:850,bottom:-850,near:10,far:6500});sun.shadow.bias=-.0001;sun.shadow.normalBias=.7;scene.add(sun,sun.target);
-const color=c=>new THREE.Color(c);const mat=(c,more={})=>new THREE.MeshStandardMaterial({color:c,roughness:.9,metalness:0,...more});
+const color=c=>new THREE.Color(c);
+// Phones and tablets shade with Lambert (diffuse only): the scene is matte almost everywhere, so it looks nearly the same at
+// a fraction of the per-pixel cost. Gloss-only parameters are dropped there.
+const PBR_ONLY=['roughness','metalness','roughnessMap','metalnessMap','envMapIntensity'];
+function StdMat(o={}){if(!lowPower)return new THREE.MeshStandardMaterial(o);const q={...o};for(const k of PBR_ONLY)delete q[k];return new THREE.MeshLambertMaterial(q);}
+const mat=(c,more={})=>StdMat({color:c,roughness:.9,metalness:0,...more});
 const stone=mat('#b9b7a4'),wood=mat('#594937'),gold=mat('#ae833d',{roughness:.67}),red=mat('#943f2d'),roofDark=mat('#59605c'),glass=mat('#466266',{roughness:.3,metalness:.15});
 const boxGeo=new THREE.BoxGeometry(1,1,1),cylGeo=new THREE.CylinderGeometry(1,1,1,8);
 function box(parent,x,y,z,w,h,d,m){const o=new THREE.Mesh(boxGeo,m);o.position.set(x,y+h/2,z);o.scale.set(w,h,d);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;}
 function cylinder(parent,x,y,z,r,h,m){const o=new THREE.Mesh(cylGeo,m);o.position.set(x,y+h/2,z);o.scale.set(r,h,r);o.castShadow=true;parent.add(o);return o;}
 const lineBatches=new Map();
 function line(parent,points,c='#777865'){let b=lineBatches.get(parent);if(!b){b={p:[],c:[]};lineBatches.set(parent,b);}const col=color(c);for(let i=1;i<points.length;i++){b.p.push(...points[i-1],...points[i]);b.c.push(col.r,col.g,col.b,col.r,col.g,col.b);}}
+// Batches colour hundreds of thousands of triangles from a few dozen hex strings: parse each string once (read-only use).
+const batchColors=new Map(),batchColor=co=>{if(typeof co!=='string')return color(co);let c=batchColors.get(co);if(!c)batchColors.set(co,c=color(co));return c;};
 class Batch{
  constructor(){this.p=[];this.c=[];this.uv=[];this.ids=[];}
- tri(a,b,c,co='#ffffff',uvs=null,id=-1){this.p.push(...a,...b,...c);const col=color(co);for(let i=0;i<3;i++)this.c.push(col.r,col.g,col.b);this.uv.push(...(uvs||[[a[0]/8,a[2]/8],[b[0]/8,b[2]/8],[c[0]/8,c[2]/8]]).flat());this.ids.push(id);}
+ tri(a,b,c,co='#ffffff',uvs=null,id=-1){this.p.push(a[0],a[1],a[2],b[0],b[1],b[2],c[0],c[1],c[2]);const col=batchColor(co),r=col.r,g=col.g,v=col.b;this.c.push(r,g,v,r,g,v,r,g,v);
+  if(uvs)this.uv.push(uvs[0][0],uvs[0][1],uvs[1][0],uvs[1][1],uvs[2][0],uvs[2][1]);else this.uv.push(a[0]/8,a[2]/8,b[0]/8,b[2]/8,c[0]/8,c[2]/8);this.ids.push(id);} // plain pushes: no spread or temporary arrays per triangle
  quad(a,b,c,d,co,uvs=null,id=-1){this.tri(a,b,c,co,uvs?[uvs[0],uvs[1],uvs[2]]:null,id);this.tri(a,c,d,co,uvs?[uvs[0],uvs[2],uvs[3]]:null,id);}
  mesh(material,parent){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(this.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(this.c,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(this.uv,2));g.computeVertexNormals();const m=new THREE.Mesh(g,material);m.castShadow=true;m.receiveShadow=true;m.userData.triangleIds=this.ids;parent.add(m);return m;}
 }
@@ -100,7 +113,10 @@ await new Promise(requestAnimationFrame);
 
 function textureTile(mode){const c=document.createElement('canvas');c.width=c.height=256;const ct=c.getContext('2d');ct.fillStyle=mode==='roof'?'#aaa99f':'#e6e3d9';ct.fillRect(0,0,256,256);const r=rng(mode==='roof'?44:98);for(let i=0;i<3500;i++){ct.fillStyle=`rgba(${r()>.5?'255,255,255':'50,55,44'},${r()*.07})`;ct.fillRect(r()*256,r()*256,1+r()*3,1+r()*2);}if(mode==='roof'){for(let x=0;x<256;x+=12){ct.fillStyle='#e3dfd550';ct.fillRect(x,0,3,256);ct.fillStyle='#222c2c60';ct.fillRect(x+8,0,2,256);}for(let y=0;y<256;y+=20){ct.fillStyle='#23333145';ct.fillRect(0,y,256,1);}}const tex=new THREE.CanvasTexture(c);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=8;return tex;}
 const roofTex=textureTile('roof'),wallTex=textureTile('wall');const walls=new Batch(),roofs=new Batch(),foundation=new Batch(),windowBatch=new Batch(),trim=new Batch(),signBatch=new Batch();
-const roofEdges=[];const detailedGroups=[];const pickables=[];// Footprints drawn by hand-built landmarks below (化城寺, 万佛塔, 肉身宝殿 main hall, 北门, 地藏禅寺 hall) are not also extruded.
+const roofEdges=[];const detailedGroups=[];const pickables=[];
+// Details a phone cannot resolve from afar (windows ~1 m wide, lanterns 0.5 m): hidden beyond 900 m on low-power devices,
+// where they would only shimmer (no MSAA there) and cost triangles. See tick().
+const farDetail=[];// Footprints drawn by hand-built landmarks below (化城寺, 万佛塔, 肉身宝殿 main hall, 北门, 地藏禅寺 hall) are not also extruded.
 const ROUSHEN_ID='overture-6eed6b02-0a6b-40b7-9326-5247a9383063';const replaced=new Set([609757872,609561169,G.buildings.find(b=>b.id===ROUSHEN_ID)?.osmId,609909704,609909706]); // + 肉身宝殿北门 and the 地藏禅寺 hall behind it
 for(const a of G.areas)for(const id of a.frame?.replaces||[])replaced.add(G.buildings.find(b=>b.id===id)?.osmId); // footprints inside hand-built sites (居之林)
 // Street signs carry real names from public listings, matched to the footprint that contains (or is within 8 m of) the pin.
@@ -193,9 +209,9 @@ for(let bi=0;bi<G.buildings.length;bi++){
  for(let i=0;i<ring.length;i++){const p=ext(ring[i]),q=ext(ring[(i+1)%ring.length]);roofEdges.push(p[0],p[1]+.06,p[2],q[0],q[1]+.06,q[2]);}
 }
 const wallMesh=walls.mesh(mat('#ffffff',{vertexColors:true,map:wallTex,side:THREE.DoubleSide}),built),roofMesh=roofs.mesh(mat('#ffffff',{vertexColors:true,map:roofTex,side:THREE.DoubleSide}),built);
-pickables.push(foundation.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),built));windowBatch.mesh(mat('#ffffff',{vertexColors:true,roughness:.4,metalness:.05,side:THREE.DoubleSide}),built);trim.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),built);pickables.push(wallMesh,roofMesh);
-const signTex=new THREE.CanvasTexture(signCanvas);signTex.colorSpace=THREE.SRGBColorSpace;signTex.anisotropy=8;signBatch.mesh(new THREE.MeshStandardMaterial({map:signTex,roughness:.55,side:THREE.DoubleSide,emissive:'#ffffff',emissiveMap:signTex,emissiveIntensity:.18}),built);
-if(lanternPts.length){const lm=new THREE.InstancedMesh(new THREE.SphereGeometry(.24,10,8),new THREE.MeshStandardMaterial({color:'#c8261c',emissive:'#8a1208',emissiveIntensity:.55,roughness:.5}),lanternPts.length),o=new THREE.Object3D();lanternPts.forEach((p,i)=>{o.position.set(...p);o.scale.set(1,1.25,1);o.updateMatrix();lm.setMatrixAt(i,o.matrix);});built.add(lm);}
+pickables.push(foundation.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),built));farDetail.push(windowBatch.mesh(mat('#ffffff',{vertexColors:true,roughness:.4,metalness:.05,side:THREE.DoubleSide}),built));trim.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),built);pickables.push(wallMesh,roofMesh);
+const signTex=new THREE.CanvasTexture(signCanvas);signTex.colorSpace=THREE.SRGBColorSpace;signTex.anisotropy=8;signBatch.mesh(StdMat({map:signTex,roughness:.55,side:THREE.DoubleSide,emissive:'#ffffff',emissiveMap:signTex,emissiveIntensity:.18}),built);
+if(lanternPts.length){const lm=new THREE.InstancedMesh(lowPower?softBlob().scale(.24,.24,.24):new THREE.SphereGeometry(.24,10,8),StdMat({color:'#c8261c',emissive:'#8a1208',emissiveIntensity:.55,roughness:.5}),lanternPts.length),o=new THREE.Object3D();lanternPts.forEach((p,i)=>{o.position.set(...p);o.scale.set(1,1.25,1);o.updateMatrix();lm.setMatrixAt(i,o.matrix);});built.add(lm);farDetail.push(lm);}
 if(acPts.length){const am=new THREE.InstancedMesh(new THREE.BoxGeometry(.8,.55,.3),mat('#d8d8d2',{roughness:.6}),acPts.length),o=new THREE.Object3D();acPts.forEach((p,i)=>{o.position.set(p[0],p[1],p[2]);o.rotation.set(0,p[3],0);o.updateMatrix();am.setMatrixAt(i,o.matrix);});built.add(am);}
 const eg=new THREE.BufferGeometry();eg.setAttribute('position',new THREE.Float32BufferAttribute(roofEdges,3));built.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:'#3f3a33',transparent:true,opacity:.55})));
 
@@ -293,7 +309,7 @@ const landmarkTop=new Map();
 }}
 // Canvas helpers for painted details (plaques, couplets, 彩画 bands); textures stay small and are drawn once.
 function paintTex(w,h,draw,{repeat=false}={}){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;if(repeat)t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;}
-function facePlane(parent,x,y,z,w,h,tex,{back=false,emissive=0}={}){const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshStandardMaterial({map:tex,roughness:.6,emissive:emissive?'#ffffff':'#000000',emissiveMap:emissive?tex:null,emissiveIntensity:emissive}));m.position.set(x,y+h/2,z);if(back)m.rotation.y=Math.PI;parent.add(m);return m;}
+function facePlane(parent,x,y,z,w,h,tex,{back=false,emissive=0}={}){const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),StdMat({map:tex,roughness:.6,emissive:emissive?'#ffffff':'#000000',emissiveMap:emissive?tex:null,emissiveIntensity:emissive}));m.position.set(x,y+h/2,z);if(back)m.rotation.y=Math.PI;parent.add(m);return m;}
 const SERIF='"Songti SC","STSong","Noto Serif SC","PingFang SC",serif';
 // Draped ground mesh (paving, lawn, paths) that follows the terrain surface as rendered: the terrain mesh is planar per
 // grid triangle, so hAt's bilinear value can sit under it; hMesh matches the triangles exactly.
@@ -343,7 +359,7 @@ function kerb(batch,ring,{h=.3,w=.35,co='#a39e91'}={}){const sgn=ringInward(ring
    for(let i=0;i<a.ring.length;i++){const p=a.ring[i],q=a.ring[(i+1)%a.ring.length],len=Math.hypot(q[0]-p[0],q[1]-p[1]);if(len<.05)continue;const nx=-sgn*(q[1]-p[1])/len,nz=sgn*(q[0]-p[0])/len;
     for(let d=carry;d<len;d+=16){const x=p[0]+(q[0]-p[0])*d/len+nx*1.2,z=p[1]+(q[1]-p[1])*d/len+nz*1.2;lamps.push([x,hMesh(x,z)+.16,z]);}carry=((carry-len)%16+16)%16;}}
   if(lamps.length){const o=new THREE.Object3D(),pole=new THREE.InstancedMesh(new THREE.CylinderGeometry(.07,.11,4.2,6),mat('#34383a',{roughness:.5,metalness:.4}),lamps.length),
-    head=new THREE.InstancedMesh(new THREE.BoxGeometry(.46,.62,.46),new THREE.MeshStandardMaterial({color:'#f3e2b8',emissive:'#ffcf7a',emissiveIntensity:.45,roughness:.5}),lamps.length),
+    head=new THREE.InstancedMesh(new THREE.BoxGeometry(.46,.62,.46),StdMat({color:'#f3e2b8',emissive:'#ffcf7a',emissiveIntensity:.45,roughness:.5}),lamps.length),
     cap=new THREE.InstancedMesh(new THREE.ConeGeometry(.42,.34,4),mat('#2f3333'),lamps.length);
    lamps.forEach((p,i)=>{o.rotation.set(0,Math.PI/4,0);o.position.set(p[0],p[1]+2.1,p[2]);o.updateMatrix();pole.setMatrixAt(i,o.matrix);o.position.set(p[0],p[1]+4.45,p[2]);o.updateMatrix();head.setMatrixAt(i,o.matrix);o.position.set(p[0],p[1]+4.93,p[2]);o.updateMatrix();cap.setMatrixAt(i,o.matrix);});
    for(const m of[pole,head,cap]){m.castShadow=true;decor.add(m);}}
@@ -400,7 +416,7 @@ function kerb(batch,ring,{h=.3,w=.35,co='#a39e91'}={}){const sgn=ringInward(ring
  const studTex=paintTex(128,128,(c,w)=>{c.fillStyle='#22201e';c.fillRect(0,0,w,w);for(const x of[32,96])for(const y of[32,96]){const gr=c.createRadialGradient(x-5,y-5,2,x,y,15);gr.addColorStop(0,'#77716a');gr.addColorStop(1,'#2a2724');c.fillStyle=gr;c.beginPath();c.arc(x,y,13,0,Math.PI*2);c.fill();}},{repeat:true});
  studTex.repeat.set(2,2);const ds=new THREE.Shape(),topY=x=>{const a=Math.abs(x);return a<3.9?6.7+.9*(x/3.9)**2:5.3+.9*((a-7.15)/3.25)**2;};
  ds.moveTo(-10.4,0);ds.lineTo(10.4,0);for(let k=0;k<=80;k++){const x=10.4-k*20.8/80;ds.lineTo(x,topY(x));}ds.lineTo(-10.4,0);
- const door=new THREE.Mesh(new THREE.ShapeGeometry(ds,4),new THREE.MeshStandardMaterial({map:studTex,roughness:.55,metalness:.35,side:THREE.DoubleSide}));door.position.z=-1.15;G0.add(door);
+ const door=new THREE.Mesh(new THREE.ShapeGeometry(ds,4),StdMat({map:studTex,roughness:.55,metalness:.35,side:THREE.DoubleSide}));door.position.z=-1.15;G0.add(door);
  for(const s of[-1,1]){const k=new THREE.Mesh(new THREE.TorusGeometry(.24,.045,6,16),gold);k.position.set(s*.75,3.1,-1.08);G0.add(k);}
  // stone lions on marble plinths in front of each pier
  const lionM=mat('#cfcbc0',{roughness:.8});for(const x of[-9.7,-3.8,3.8,9.7]){box(G0,x,0,2.05,1.15,1.25,1.25,marble);const L=new THREE.Group();L.position.set(x,1.25,2.05);G0.add(L);
@@ -486,14 +502,14 @@ let featuredPin=null;
   c.fillStyle='#f7ecd6';c.fillRect(w*.1,h*.62,w*.46,h*.2);c.fillStyle='#8a5a36';c.fillRect(w*.1,h*.52,w*.46,h*.1);c.fillStyle='#fff3d8';c.beginPath();c.arc(w*.75,h*.34,h*.1,0,Math.PI*2);c.fill();c.fillStyle='#6d4a30';c.fillRect(w*.72,h*.44,w*.06,h*.4);
   c.fillStyle='#2a2b2d';c.fillRect(0,0,w,7);c.fillRect(0,h-7,w,7);c.fillRect(0,0,7,h);c.fillRect(w-7,0,7,h);c.fillRect(w/2-3,0,6,h);});
  // ---- materials ----
- const M=(c,o={})=>new THREE.MeshStandardMaterial({color:c,roughness:.85,side:THREE.DoubleSide,...o});
+ const M=(c,o={})=>StdMat({color:c,roughness:.85,side:THREE.DoubleSide,...o});
  const mStucco=M('#ffffff',{map:stuccoTex}),mNavy=M('#223044'),mSlat=M('#ffffff',{map:slatTex,roughness:.75}),mRubble=M('#ffffff',{map:rubbleTex,roughness:.95}),mFlag=M('#ffffff',{map:flagTex,roughness:.95}),
   mTile=M('#ffffff',{map:tileTex,roughness:.7}),mTileCap=M('#8a3b21',{roughness:.7}),mDeck=M('#ffffff',{map:deckTex,roughness:.8}),mResin=M('#ffffff',{map:resinTex}),mGravel=M('#ffffff',{map:gravelTex}),mFloor=M('#ffffff',{map:floorTex}),
   mApron=M('#a9a99f'),mCoping=M('#c9c4b8'),mFrame=M('#2c2e31',{roughness:.5}),mFrameRed=M('#6e2c1f',{roughness:.6}),mFascia=M('#4a4e52',{roughness:.6}),mStep=M('#ddd8cc'),mPlanter=M('#ebe8e0'),
   mShrubRed=M('#8d3c26'),mShrubOchre=M('#9a6a36'),mShrubGreen=M('#56683a'),mPine=M('#3b5a33'),mTrunk=M('#5b4636'),mGranite=M('#bd8e78'),mRattan=M('#a9763d'),mWood=M('#6b4a30'),mMetal=M('#26282b',{roughness:.45,metalness:.5}),mRedFlower=M('#c93a24'),
-  mWater=M('#17344d',{roughness:.06,metalness:.45}),mGlass=new THREE.MeshStandardMaterial({color:'#cfeee9',transparent:true,opacity:.26,roughness:.05,metalness:.1,side:THREE.DoubleSide,depthWrite:false}),
+  mWater=M('#17344d',{roughness:.06,metalness:.45}),mGlass=StdMat({color:'#cfeee9',transparent:true,opacity:.26,roughness:.05,metalness:.1,side:THREE.DoubleSide,depthWrite:false}),
   mGlassEdge=M('#8fe0d2',{emissive:'#7fe7d6',emissiveIntensity:.55}),mLED=M('#ffb24a',{emissive:'#ff9f2e',emissiveIntensity:2.2}),mSconce=M('#ffdca0',{emissive:'#ffc46b',emissiveIntensity:1.8}),
-  mWin=new THREE.MeshStandardMaterial({map:winTex,emissive:'#ffffff',emissiveMap:winTex,emissiveIntensity:.8,roughness:.25,side:THREE.DoubleSide});
+  mWin=StdMat({map:winTex,emissive:'#ffffff',emissiveMap:winTex,emissiveIntensity:.8,roughness:.25,side:THREE.DoubleSide});
  // ---- merged builders (local frame: x = u along the facade, y = height above the road datum, z = -v into the hill) ----
  const kit=new Map(),add=(geo,m)=>{if(!kit.has(m))kit.set(m,[]);kit.get(m).push(geo.index?geo.toNonIndexed():geo);};
  function bx(m,u0,u1,y0,y1,v0,v1,tm=2){if(u1-u0<1e-3||y1-y0<1e-3||v1-v0<1e-3)return;const w=u1-u0,h=y1-y0,d=v1-v0,geo=new THREE.BoxGeometry(w,h,d),uv=geo.attributes.uv,dims=[[d,h,v0,y0],[d,h,v0,y0],[w,d,u0,v0],[w,d,u0,v0],[w,h,u0,y0],[w,h,u0,y0]];
@@ -626,7 +642,7 @@ let featuredPin=null;
   mLanR=M('#d2311f',{emissive:'#8a150a',emissiveIntensity:.55,roughness:.6}),mLanO=M('#e67a2c',{emissive:'#8a3a0c',emissiveIntensity:.5,roughness:.6}),mLanY=M('#e8c74c',{emissive:'#7d6414',emissiveIntensity:.45,roughness:.6});
  const stick=(m,a,b,r0,r1=r0)=>{const A=new THREE.Vector3(a[0],a[1],-a[2]),B=new THREE.Vector3(b[0],b[1],-b[2]),dir=B.clone().sub(A),len=dir.length(),geo=new THREE.CylinderGeometry(r1,r0,len,7);
   geo.translate(0,len/2,0);geo.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize()));geo.translate(A.x,A.y,A.z);add(geo,m);};
- const plateMat=(tex,emissive=0)=>new THREE.MeshStandardMaterial({map:tex,roughness:.55,emissive:emissive?'#ffffff':'#000000',emissiveMap:emissive?tex:null,emissiveIntensity:emissive,side:THREE.DoubleSide});
+ const plateMat=(tex,emissive=0)=>StdMat({map:tex,roughness:.55,emissive:emissive?'#ffffff':'#000000',emissiveMap:emissive?tex:null,emissiveIntensity:emissive,side:THREE.DoubleSide});
  const plate=(tex,u0,u1,y0,y1,v,{emissive=0}={})=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(u1-u0,y1-y0),plateMat(tex,emissive));m.position.set((u0+u1)/2,(y0+y1)/2,-v+.01);g.add(m);return m;};  // faces the road (-v)
  const eastPlate=(tex,u,v0,v1,y0,y1,{emissive=0}={})=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(v1-v0,y1-y0),plateMat(tex,emissive));m.rotation.y=Math.PI/2;m.position.set(u,(y0+y1)/2,-(v0+v1)/2);g.add(m);return m;}; // faces +u
  const CAL='"Xingkai SC","STXingkai","Kaiti SC","STKaiti","KaiTi",serif';
@@ -746,7 +762,7 @@ let featuredPin=null;
   const bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.BufferAttribute(pos,3));bg.setAttribute('normal',new THREE.BufferAttribute(nor,3));bg.setAttribute('uv',new THREE.BufferAttribute(uv,2));bg.computeBoundingSphere();
   const mesh=new THREE.Mesh(bg,m);mesh.castShadow=!m.transparent&&m!==mLED&&m!==mSconce;mesh.receiveShadow=!m.transparent;g.add(mesh);}
  // The map pin that marks the client's guesthouse from anywhere on the mountain (scaled with camera distance in tick()).
- {const pin=new THREE.Group(),red=new THREE.MeshStandardMaterial({color:'#c3302a',emissive:'#8f160f',emissiveIntensity:.55,roughness:.35}),head=new THREE.Mesh(new THREE.SphereGeometry(1.5,24,16),red),tip=new THREE.Mesh(new THREE.ConeGeometry(1.32,3.2,24),red),dot=new THREE.Mesh(new THREE.SphereGeometry(.62,16,12),new THREE.MeshStandardMaterial({color:'#fff4dc',emissive:'#ffe3a8',emissiveIntensity:.6}));
+ {const pin=new THREE.Group(),red=StdMat({color:'#c3302a',emissive:'#8f160f',emissiveIntensity:.55,roughness:.35}),head=new THREE.Mesh(new THREE.SphereGeometry(1.5,24,16),red),tip=new THREE.Mesh(new THREE.ConeGeometry(1.32,3.2,24),red),dot=new THREE.Mesh(new THREE.SphereGeometry(.62,16,12),StdMat({color:'#fff4dc',emissive:'#ffe3a8',emissiveIntensity:.6}));
   tip.rotation.x=Math.PI;tip.position.y=1.6;head.position.y=3.9;dot.position.set(0,3.9,1.2);pin.add(tip,head,dot);const c=W(25,11);pin.position.set(c[0],D+15.5,c[1]);pin.userData={base:D+15.5,head:5.4};decor.add(pin);featuredPin=pin;}
  landmarkTop.set(place.n,D+15.5+5.4);
  place.modelNote='三维模型按业主提供的实拍照片和航拍图建造：一层白色转角房、五间带石墙小院的客房、灯光直梯与玻璃门大堂；东头茶室临路一面为石材勒脚、木饰面和木框大窗，入户石阶沿茶室向西上到前院，外侧是大块花岗岩挡墙和小石僧像；茶室东山墙白墙深蓝勒脚，挂“居之林”竖匾，面朝停车场；停车场朝南，一排车位垂直于北侧两级毛石挡墙，车头朝南，充电桩挂在挡墙上、正上方是发光招牌“居之林”和“173 5664 8281　隐于山林 归于自然”；挡墙上方是有桌椅的平台，由二层木平台经弧形灯光楼梯上去，再沿石墙直梯上到三层，挂满灯笼的大松树长在三层；二层红陶瓦坡顶客房和平顶白色楼，前有罗汉松、白色花池、砾石汀步与木平台；三层屋顶露台有瓦屋面上的木质阶梯座、水景池和木格栅挡墙壁灯。尺寸按照片比例估计。';
@@ -794,21 +810,32 @@ for(let i=0;i<treeLimit*2&&trees.length<treeLimit;i++){
  if(steep>1.7&&rf()<.84)continue;
  const s=6.5+rf()*6.7,bz=bambooZone(x,z,h,steep);if(bz&&rf()<bz){bamboo.push({x,z,h,s:9+rf()*4,r:rf()});continue;}trees.push({x,z,h,s,r:rf(),pine:rf()<.18+(h>800?.25:0)});
 }
-const pineCount=trees.filter(t=>t.pine).length,leafCount=trees.length-pineCount;
-// Trees are ~80% of a phone frame's triangles, so low-power devices get coarser crowns and open trunks/cones (caps are never seen).
-const leafGeo=lowPower?new THREE.SphereGeometry(1,6,4):new THREE.SphereGeometry(1,7,5),pineGeo=new THREE.ConeGeometry(1,1,lowPower?7:9,1,lowPower);
-const trunk=new THREE.InstancedMesh(new THREE.CylinderGeometry(.18,.3,1,5,1,lowPower),mat('#686854'),trees.length);
-const leafMesh=new THREE.InstancedMesh(leafGeo,mat('#ffffff',{vertexColors:false}),leafCount*2),pineMesh=new THREE.InstancedMesh(pineGeo,mat('#ffffff'),pineCount*2);
-leafMesh.receiveShadow=pineMesh.receiveShadow=true;forest.add(trunk,leafMesh,pineMesh);
-const dummy=new THREE.Object3D(),tc=new THREE.Color();let ti=0,li=0,pi=0;
-for(const t of trees){dummy.position.set(t.x,t.h+t.s*.35,t.z);dummy.rotation.set(0,t.r*6.28,0);dummy.scale.set(1,t.s*.7,1);dummy.updateMatrix();trunk.setMatrixAt(ti++,dummy.matrix);
- for(let j=0;j<2;j++){if(t.pine){dummy.position.set(t.x,t.h+t.s*(.68+j*.36),t.z);dummy.scale.set(t.s*(.5-j*.12),t.s*.91,t.s*(.5-j*.12));tc.set(t.r>.5?'#304f39':'#385842');dummy.updateMatrix();pineMesh.setMatrixAt(pi,dummy.matrix);pineMesh.setColorAt(pi++,tc);}else{dummy.position.set(t.x+(j?1.7:-1.1),t.h+t.s*(.67+j*.13),t.z+(j?-1.2:.9));dummy.scale.set(t.s*(.59-j*.04),t.s*(.40+j*.03),t.s*.57);tc.set(['#3e5b36','#4b663d','#38583d','#526b42'][Math.floor(t.r*4)]);dummy.updateMatrix();leafMesh.setMatrixAt(li,dummy.matrix);leafMesh.setColorAt(li++,tc);}}
-}
-{const culms=lowPower?2:4,bm=new THREE.InstancedMesh(lowPower?new THREE.SphereGeometry(1,5,4):new THREE.SphereGeometry(1,7,6),mat('#ffffff',{roughness:.85}),Math.max(1,bamboo.length*culms)),o=new THREE.Object3D(),bc=new THREE.Color();let k=0;
+// The forest is cut into TILES×TILES blocks over the terrain, each with its own instanced trunks, broadleaf crowns, pine
+// cones and bamboo, so a view of part of the mountain skips the blocks outside it. Low-power devices use coarser shapes
+// (20-triangle crowns, three-sided trunks, six-sided cones, one plume per bamboo clump) and hide trunks from afar; the
+// adaptive quality further down can thin every block (setForestDensity keeps a tree's trunk and crowns together).
+const TILES=3,tileOf=(x,z)=>Math.min(TILES-1,Math.max(0,Math.floor((x+W/2)/W*TILES)))*TILES+Math.min(TILES-1,Math.max(0,Math.floor((z+D/2)/D*TILES)));
+function softBlob(){const g=new THREE.IcosahedronGeometry(1,0);g.deleteAttribute('normal');g.deleteAttribute('uv');const m=mergeVertices(g);m.setAttribute('normal',m.getAttribute('position').clone());return m;}
+const leafGeo=lowPower?softBlob():new THREE.SphereGeometry(1,7,5),pineGeo=new THREE.ConeGeometry(1,1,lowPower?6:9,1,lowPower);
+const trunkGeo=lowPower?new THREE.CylinderGeometry(.18,.3,1,3,1,true):new THREE.CylinderGeometry(.18,.3,1,5),bambooGeo=lowPower?softBlob():new THREE.SphereGeometry(1,7,6);
+const trunkMat=mat('#686854'),leafMat=mat('#ffffff'),pineMat=mat('#ffffff'),bambooMat=mat('#ffffff',{roughness:.85}),culms=lowPower?1:4,culmW=lowPower?1.35:1;
+const forestTiles=[],tiles=[...Array(TILES*TILES)].map(()=>({list:[],bamboo:[]}));
+for(const t of trees)tiles[tileOf(t.x,t.z)].list.push(t);for(const t of bamboo)tiles[tileOf(t.x,t.z)].bamboo.push(t);
+const dummy=new THREE.Object3D(),tc=new THREE.Color();
+const instanced=(geo,m,n,shadow)=>{if(!n)return null;const im=new THREE.InstancedMesh(geo,m,n);im.receiveShadow=shadow;forest.add(im);return im;};
+for(const tile of tiles){
+ const L=tile.list,leafPre=[0],pinePre=[0];for(const t of L){leafPre.push(leafPre.at(-1)+(t.pine?0:1));pinePre.push(pinePre.at(-1)+(t.pine?1:0));}
+ const trunk=instanced(trunkGeo,trunkMat,L.length,false),crown=instanced(leafGeo,leafMat,leafPre.at(-1)*2,true),cone=instanced(pineGeo,pineMat,pinePre.at(-1)*2,true),bam=instanced(bambooGeo,bambooMat,tile.bamboo.length*culms,true);
+ let ti=0,li=0,pi=0,k=0;
+ for(const t of L){dummy.position.set(t.x,t.h+t.s*.35,t.z);dummy.rotation.set(0,t.r*6.28,0);dummy.scale.set(1,t.s*.7,1);dummy.updateMatrix();trunk.setMatrixAt(ti++,dummy.matrix);
+  for(let j=0;j<2;j++){if(t.pine){dummy.position.set(t.x,t.h+t.s*(.68+j*.36),t.z);dummy.scale.set(t.s*(.5-j*.12),t.s*.91,t.s*(.5-j*.12));tc.set(t.r>.5?'#304f39':'#385842');dummy.updateMatrix();cone.setMatrixAt(pi,dummy.matrix);cone.setColorAt(pi++,tc);}else{dummy.position.set(t.x+(j?1.7:-1.1),t.h+t.s*(.67+j*.13),t.z+(j?-1.2:.9));dummy.scale.set(t.s*(.59-j*.04),t.s*(.40+j*.03),t.s*.57);tc.set(['#3e5b36','#4b663d','#38583d','#526b42'][Math.floor(t.r*4)]);dummy.updateMatrix();crown.setMatrixAt(li,dummy.matrix);crown.setColorAt(li++,tc);}}
+ }
  // A grove reads as a few tall, soft, yellow-green plumes that lean outward (feathery 毛竹 canopy), lighter than broadleaf forest.
- for(const t of bamboo)for(let c=0;c<culms;c++){const a=t.r*6.28+c*1.9,rr=c?2.2+((t.r*97+c*13)%1)*1.8:0;o.position.set(t.x+Math.cos(a)*rr,t.h+t.s*(.6-.05*c),t.z+Math.sin(a)*rr);o.rotation.set(Math.sin(a)*.22,0,Math.cos(a)*.22);o.scale.set(2.1+.4*((c*7)%3),t.s*.46*(1-.06*c),2.1+.4*((c*5)%3));o.updateMatrix();bm.setMatrixAt(k,o.matrix);bc.set(['#76984c','#809f52','#6b8c47','#8aa65a'][(c+Math.floor(t.r*4))%4]);bm.setColorAt(k++,bc);}
- bm.count=k;bm.receiveShadow=true;bm.instanceMatrix.needsUpdate=true;if(bm.instanceColor)bm.instanceColor.needsUpdate=true;bm.computeBoundingSphere();forest.add(bm);}
-for(const m of[trunk,leafMesh,pineMesh]){m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true;m.computeBoundingSphere();}
+ for(const t of tile.bamboo)for(let c=0;c<culms;c++){const a=t.r*6.28+c*1.9,rr=c?2.2+((t.r*97+c*13)%1)*1.8:0;dummy.position.set(t.x+Math.cos(a)*rr,t.h+t.s*(.6-.05*c),t.z+Math.sin(a)*rr);dummy.rotation.set(Math.sin(a)*.22,0,Math.cos(a)*.22);dummy.scale.set((2.1+.4*((c*7)%3))*culmW,t.s*.46*(1-.06*c),(2.1+.4*((c*5)%3))*culmW);dummy.updateMatrix();bam.setMatrixAt(k,dummy.matrix);tc.set(['#76984c','#809f52','#6b8c47','#8aa65a'][(c+Math.floor(t.r*4))%4]);bam.setColorAt(k++,tc);}
+ for(const m of[trunk,crown,cone,bam])if(m){m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true;m.computeBoundingSphere();}
+ forestTiles.push({trunk,crown,cone,bam,n:L.length,leafPre,pinePre,nb:tile.bamboo.length});
+}
+function setForestDensity(f){for(const t of forestTiles){const K=Math.round(f*t.n);if(t.trunk)t.trunk.count=K;if(t.crown)t.crown.count=2*t.leafPre[K];if(t.cone)t.cone.count=2*t.pinePre[K];if(t.bam)t.bam.count=Math.round(f*t.nb)*culms;}}
 
 const movers=[];
 for(const cable of G.cables){const a=cable.pts[0],b=cable.pts.at(-1),dist=Math.hypot(b[0]-a[0],b[1]-a[1]);const pts=[];
@@ -822,10 +849,25 @@ for(const f of G.funicular){const pts=[];for(let i=1;i<f.pts.length;i++){const a
  const curve=new THREE.CatmullRomCurve3(pts);for(const s of[-1,1])line(decor,pts.map(p=>[p.x,p.y,p.z+s*.8]),'#dad8c3');const g=new THREE.Group();box(g,0,0,0,7,2.5,2.4,mat('#eee8d8'));box(g,0,.8,0,6.8,1.2,2.45,glass);box(g,0,2.3,0,7,.45,2.6,red);decor.add(g);movers.push({g,curve,phase:.4,kind:'funicular'});
 }
 for(const[parent,b]of lineBatches){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(b.c,3));parent.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({vertexColors:true})));}
+// Hand-built landmarks (北门, 地藏禅寺, 居之林 …) are hundreds of small meshes, and on older phones it is the draw calls
+// that hurt there. Within every group, static meshes that look the same (identical material settings) are merged into
+// one mesh; groups, picking and the distance culling above stay as they were. Nothing changes materials at run time.
+{const shared=new Map(),key=m=>[m.type,m.color?.getHexString(),m.emissive?.getHexString(),m.emissiveIntensity,m.roughness,m.metalness,m.opacity,m.transparent,m.side,m.map?.uuid,m.emissiveMap?.uuid,m.vertexColors,m.flatShading,m.depthWrite,m.depthTest,m.alphaTest,m.polygonOffset,m.polygonOffsetFactor,m.polygonOffsetUnits,m.fog,m.toneMapped].join('/');
+ const same=m=>{const k=key(m);if(!shared.has(k))shared.set(k,m);return shared.get(k);};
+ const mergeGroup=g=>{for(const c of[...g.children])if(!c.isMesh&&c.children.length)mergeGroup(c);
+  const buckets=new Map();
+  for(const o of g.children){if(!o.isMesh||o.isInstancedMesh||o.isSkinnedMesh||Array.isArray(o.material)||o.children.length||!o.visible||Object.keys(o.geometry.morphAttributes).length)continue;
+   o.material=same(o.material);const geo=o.geometry,k=key(o.material)+'|'+Object.keys(geo.attributes).sort().join()+'|'+!!geo.index+'|'+o.castShadow+o.receiveShadow+'|'+o.renderOrder;
+   if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(o);}
+  for(const list of buckets.values()){if(list.length<2)continue;
+   const merged=mergeGeometries(list.map(o=>{if(o.matrixAutoUpdate)o.updateMatrix();return o.geometry.clone().applyMatrix4(o.matrix);}));if(!merged)continue;
+   const m=new THREE.Mesh(merged,list[0].material);m.castShadow=list[0].castShadow;m.receiveShadow=list[0].receiveShadow;m.renderOrder=list[0].renderOrder;
+   for(const o of list)g.remove(o);g.add(m);}};
+ for(const g of built.children)if(g.isGroup)mergeGroup(g);}
 for(const g of detailedGroups)pickables.push(g);
 
 const places=G.places.map(p=>({...p}));const byName=new Map(places.map(p=>[p.n,p]));const business=p=>['hotel','food','shop'].includes(p.category);const estimated=p=>p.quality?.startsWith('legacy')||['overture','unverified_listing','derived_area'].includes(p.quality);
-let selected=null,category='all',search='',tween=null,frame=0,visibleLabelCount=0;
+let selected=null,category='all',search='',tween=null,frame=0,visibleLabelCount=0,labelCap=null;
 const icon={temple:'寺',hotel:'宿',food:'食',shop:'购',transport:'行',nature:'山',sight:'景',village:'村',service:'公'};
 const GROUPS={temple:['temple'],sight:['sight','nature','village'],service:['service','transport']};
 // Search covers temples, sights, place names and public facilities only (p.searchable, set in corrections.py); other
@@ -856,7 +898,8 @@ for(const p of places)for(const h of p.halls||[]){const q={n:h.n,x:h.x,z:h.z,p:5
 
 function pose(x,z,dist=900,az=145,pol=57){const target=new THREE.Vector3(x,hAt(x,z)*EX,z);const a=az*Math.PI/180,p=pol*Math.PI/180;return{target,pos:target.clone().add(new THREE.Vector3(-Math.sin(a)*dist*Math.sin(p),dist*Math.cos(p),Math.cos(a)*dist*Math.sin(p)))};}
 // onDone runs when the camera arrives (or at once if the user grabs the camera mid-flight).
-function fly(to,ms=1200,onDone=null){if(reduce||!ms){camera.position.copy(to.pos);controls.target.copy(to.target);controls.update();tween=null;onDone?.();}else tween={p0:camera.position.clone(),t0:controls.target.clone(),p1:to.pos,t1:to.target,start:performance.now(),ms,onDone};}
+let routes=null;const frameHooks=[]; // routes: set up after the panel; frameHooks run each frame before the controls
+function fly(to,ms=1200,onDone=null){routes?.stopPreview();if(reduce||!ms){camera.position.copy(to.pos);controls.target.copy(to.target);controls.update();tween=null;onDone?.();}else tween={p0:camera.position.clone(),t0:controls.target.clone(),p1:to.pos,t1:to.target,start:performance.now(),ms,onDone};}
 // Longer hops take a little longer so the move never feels rushed.
 const flightMs=to=>clamp(900+camera.position.distanceTo(to.pos)*.35,1100,2400);
 // The view from before a card first moved the camera (the destination if a flight is under way); closing the card eases back to it.
@@ -911,7 +954,7 @@ const CAT={temple:'寺院',sight:'景点',nature:'山水景观',village:'村落�
 const TEL='17356648281',TEL_TEXT='173 5664 8281';
 function more(title){const d=node('details','more');d.append(node('summary','',title));return d;}
 function actionBtn(cls,svg,text){const b=node('button','btn '+cls);b.type='button';b.innerHTML=svg;b.append(text);return b;}
-const GO_SVG='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',ORBIT_SVG='<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>',PHONE_SVG='<svg viewBox="0 0 24 24"><path d="M6.5 3.5h3l1.5 4-2 1.3a11 11 0 0 0 6.2 6.2l1.3-2 4 1.5v3a2 2 0 0 1-2 2A16.5 16.5 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/></svg>';
+const ROUTE_SVG='<svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></svg>',GO_SVG='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',ORBIT_SVG='<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>',PHONE_SVG='<svg viewBox="0 0 24 24"><path d="M6.5 3.5h3l1.5 4-2 1.3a11 11 0 0 0 6.2 6.2l1.3-2 4 1.5v3a2 2 0 0 1-2 2A16.5 16.5 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/></svg>';
 // With doFly the camera moves first; the card is only built and eased in once the flight has finished.
 function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('selected');const token=++cardToken;
  const build=()=>{
@@ -920,7 +963,7 @@ function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('
  const photos=[['jzl-1',640],['jzl-2',541],['jzl-5',720],['jzl-6',540],['jzl-3',540],['jzl-4',640]],srcs=photos.map(([f])=>{const path=`media/juzhilin/${f}.jpg`;return window.__JIUHUA_MEDIA__?.[path]||path;});
  for(const[i,src]of srcs.entries()){const a=node('a');a.href=src;a.target='_blank';a.rel='noopener';a.onclick=e=>{e.preventDefault();openViewer(srcs,i);};const img=node('img');img.width=960;img.height=photos[i][1];img.src=src;img.alt='居之林民宿实拍';img.loading='lazy';a.append(img);hero.append(a);}}
  const card=cardBase(p.featured?p.shortName:p.n,p.featured?'精选民宿 · 实拍建模':CAT[p.category]||'地点',{cat:p.category,sub:p.address||p.zone||'',hero,featured:!!p.featured});
- const chips=node('div','chips');if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(hAt(p.x,p.z))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));card.append(chips);
+ const chips=node('div','chips');if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(hAt(p.x,p.z))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));card.append(chips);if(p.featured&&G.routes?.some(r=>r.id==='juzhilin-halfday')){const r=G.routes.find(r=>r.id==='juzhilin-halfday'),t=node('button','route-teaser');t.type='button';t.innerHTML=ROUTE_SVG;const tx=node('span','');tx.append(node('b','','从这里出发 · '+r.short),node('small','',`${r.duration} · 肉身宝殿 → 化城寺 → 缆车上百岁宫 · 看路线`));t.append(tx);t.onclick=()=>routes?.open(r.id);card.append(t);}
  if(p.featured)card.append(node('p','lead','三层退台的山地民宿：屋顶露台远眺九华诸峰，二层木平台与罗汉松小院，门前停车场带充电桩，挡墙上方是挂满灯笼的大松树。'));
  if(p.note)card.append(node('p','lead',p.note));
  if(p.architecture)card.append(node('p','',p.architecture));
@@ -966,9 +1009,19 @@ function renderList(){const list=$('#place-list');list.replaceChildren();const f
  if(!found.length)list.append(node('p','empty','没有匹配的地点。可以搜寺庙、景点、村名或车站、公厕、停车场，例如“化城寺”“凤凰松”“车站”。'));
 }
 $('#search').oninput=e=>{search=e.target.value.trim();renderList();};$$('[data-category]').forEach(b=>b.onclick=()=>{category=b.dataset.category;$$('[data-category]').forEach(x=>x.classList.toggle('active',x===b));renderList();});renderList();
-$('#panel-close').onclick=()=>{$('#panel').classList.add('closed');resize();};$('#panel-open').onclick=()=>{closeMobileSheets('directory');$('#panel').classList.remove('closed');resize();};if(mobile)$('#panel').classList.add('closed');
+function setTab(tab){$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';const a=$('.panel-tabs .active'),bar=$('.panel-tabs');bar.style.setProperty('--tab-x',a.offsetLeft+'px');bar.style.setProperty('--tab-w',a.offsetWidth+'px');}
+function openPanel(tab){if(tab)setTab(tab);closeMobileSheets('directory');$('#panel').classList.remove('closed');resize();requestAnimationFrame(()=>setTab($('.panel-tabs .active').dataset.tab));}
+$$('.panel-tabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));setTab('routes');
+$('#panel-close').onclick=()=>{$('#panel').classList.add('closed');resize();};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');if(mobile)$('#panel').classList.add('closed');
 $('#settings-toggle').onclick=()=>{const open=$('#settings').classList.contains('collapsed');if(open)closeMobileSheets('settings');setSettings(open);};if(mobile)setSettings(false);
 $('#featured-cta').onclick=()=>selectPlace(featured,true);
+// The part of the map left uncovered, for framing a route: below the top bar and above a phone's sheet (or left of a side
+// sheet), or beside the open desktop panel. The view shift centres the map in the same area.
+function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),open=!p.classList.contains('closed');let top=0,bottom=h,left=0,right=w;
+ if(mobile){top=$('.viewbar').getBoundingClientRect().bottom;if(open){if(p.offsetWidth>w*.6)bottom=p.offsetTop;else right=p.offsetLeft;}}else if(open)right=w-340;
+ return{left,top,right,bottom,shiftX:shiftTarget.x,shiftY:shiftTarget.y};}
+routes=setupRoutes({routes:G.routes||[],world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>{tween=null;},
+ closeSheetsForRoute:()=>{if(!mobile)return;closeCard(false);$('#panel').classList.add('closed');resize();}});
 $('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>forest.visible=e.target.checked;$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
 $('#height').oninput=e=>{const old=EX;EX=+e.target.value;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=EX;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`视觉增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(EX-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(EX-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*EX;for(const q of extraLabels)q.label.position.y=(q.top+4)*EX;};
 const S=G.stats,ST=S.buildingStyles||{};
@@ -1022,7 +1075,7 @@ window.visualViewport?.addEventListener('resize',syncVisibleViewport);window.vis
 addEventListener('keydown',e=>{const v=$('#viewer');if(!v.hidden){if(e.key==='Escape')closeViewer();else if(e.key==='ArrowLeft'||e.key==='ArrowRight')v._go(e.key==='ArrowLeft'?-1:1);return;}if(e.key==='Escape'&&!$('#data-dialog').open){closeCard();closeMobileSheets(null);}});addEventListener('resize',resize);resize();
 const temp=new THREE.Vector3();
 function occluded(p){const a=camera.position,b=p.label.position;for(let k=2;k<24;k++){const t=k/24,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;if(Math.abs(x)>W/2||Math.abs(z)>D/2)continue;if(hAt(x,z)*EX>a.y+(b.y-a.y)*t+4)return true;}return false;}
-function updateLabels(){const show=$('#layer-labels').checked,showEstimate=$('#layer-estimates').checked,cands=[],w=innerWidth,h=innerHeight,cam=camera.position,cap=mobile?28:60;
+function updateLabels(){const show=$('#layer-labels').checked,showEstimate=$('#layer-estimates').checked,cands=[],w=innerWidth,h=innerHeight,cam=camera.position,cap=labelCap??(mobile?28:60);
  for(const p of places.concat(extraLabels)){if(!p.label)continue;const lp=p.label.position,dist=Math.hypot(lp.x-cam.x,lp.y-cam.y,lp.z-cam.z);
   let v=show&&(dist<p.limit||p===selected||(p.hall&&p.parent===selected&&dist<900))&&(p.road||p.hall||p.featured||(filtered(p)&&(showEstimate||!estimated(p))));let x=0,y=0;
   if(v){temp.copy(lp).project(camera);x=(temp.x+1)*w/2;y=(1-temp.y)*h/2;if(temp.z>1||temp.z<0||x<p.labelWidth/2+4||x>w-p.labelWidth/2-4||y<35||y>h-18)v=false;}
@@ -1031,27 +1084,39 @@ function updateLabels(){const show=$('#layer-labels').checked,showEstimate=$('#l
  for(const c of cands){if(c.v){const r=[c.x-c.p.labelWidth/2,c.y-30,c.x+c.p.labelWidth/2,c.y+4];if(c.p!==selected&&!c.p.featured&&(visibleLabelCount>=cap||occupied.some(o=>!(r[2]<o[0]||r[0]>o[2]||r[3]<o[1]||r[1]>o[3]))))c.v=false;else{occupied.push(r);visibleLabelCount++;}}
   if(c.v){if(!c.p.label.parent)scene.add(c.p.label);c.p.label.visible=true;}else if(c.p.label.parent)scene.remove(c.p.label);}
 }
-// Low-power devices draw ~20 fps while nothing moves (only the cable cars and the 居之林 pin animate then), which saves
-// battery and heat; any touch, flight or sheet movement returns to full rate. If a phone cannot hold ~25 fps while the map
-// moves, its render resolution steps down (1.5 → 1.25 → 1 device pixel).
-let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,frameAvg=16.7,dprCheckAt=performance.now()+5000;
+// Low-power devices draw ~20 fps while nothing moves (only the cable cars and the 居之林 pin animate then), and ~10 fps
+// once the map has been left alone for a while, which saves battery and heat; any touch, flight or sheet movement
+// returns to full rate. Adaptive quality: the first seconds after loading render continuously as a benchmark, and later
+// every run of back-to-back frames counts. Whenever the map cannot hold ~25 fps the next step is taken: render
+// resolution 1.25, then 1 device pixel, then a thinner forest (60 %, 40 %), then fewer labels.
+let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,frameAvg=16.7,frameN=0,benchUntil=0,qualityAt=0,quality=0;
 for(const ev of['pointerdown','pointermove','wheel','keydown','input','change'])addEventListener(ev,()=>{lastInput=performance.now();},{capture:true,passive:true});
-function adaptDpr(dt,now){frameAvg+=(Math.min(dt,120)-frameAvg)*.05;if(now<dprCheckAt||frameAvg<40||maxDpr<=1)return;maxDpr=Math.max(1,maxDpr-.25);renderer.setPixelRatio(dprCap());frameAvg=16.7;dprCheckAt=now+3000;}
+const setDpr=v=>{if(dprCap()<=v)return false;maxDpr=v;renderer.setPixelRatio(dprCap());return true;};
+const QUALITY=[()=>setDpr(1.25),()=>setDpr(1),()=>{setForestDensity(.6);return true;},()=>{setForestDensity(.4);return true;},()=>{labelCap=mobile?16:36;return true;}];
+function stepQuality(n){while(n>0&&quality<QUALITY.length){if(QUALITY[quality++]())n--;}frameAvg=16.7;frameN=0;}
+function measure(dt,now){
+ if(now<benchUntil-2700)return; // the first frames compile shaders and upload geometry
+ frameAvg=frameN?frameAvg+(Math.min(dt,150)-frameAvg)*(now<benchUntil?.12:.05):Math.min(dt,150);frameN++;
+ if(benchUntil&&now>=benchUntil){benchUntil=0;qualityAt=now+2500;if(frameAvg>40)stepQuality(frameAvg>95?3:frameAvg>62?2:1);return;}
+ if(!benchUntil&&now>qualityAt&&frameN>30&&frameAvg>40){stepQuality(1);qualityAt=now+2500;}
+}
 function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;return;}
  const dt=lastFrame?now-lastFrame:16.7;lastFrame=now;
+ for(const f of frameHooks)f(now,dt);
  if(tween){const t=clamp((now-tween.start)/tween.ms,0,1),e=t<.5?4*t*t*t:1-(-2*t+2)**3/2;camera.position.lerpVectors(tween.p0,tween.p1,e);controls.target.lerpVectors(tween.t0,tween.t1,e);camera.position.y+=Math.sin(t*Math.PI)*Math.min(180,tween.p0.distanceTo(tween.p1)*.12);if(t===1){const done=tween.onDone;tween=null;done?.();}}
  controls.target.x=clamp(controls.target.x,-W/2,W/2);controls.target.z=clamp(controls.target.z,-D/2,D/2);const moved=controls.update();if(Math.abs(camera.position.x)<W/2&&Math.abs(camera.position.z)<D/2&&!inTerrainCut(camera.position.x,camera.position.z))camera.position.y=Math.max(camera.position.y,hAt(camera.position.x,camera.position.z)*EX+8);
  for(const m of movers){const t=reduce?m.phase:m.kind==='funicular'?(Math.sin(now/16000)*.5+.5)*.96+.02:((now/140000)+m.phase)%1;const p=m.curve.getPoint(t);m.g.position.copy(p);if(m.kind==='cable')m.g.position.y-=5.5;const tangent=m.curve.getTangent(t);m.g.rotation.y=Math.atan2(-tangent.z,tangent.x);}
  const shifting=shift.x!==shiftTarget.x||shift.y!==shiftTarget.y;
  if(shifting){const k=1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
- if(lowPower&&!tween&&!moved&&!shifting&&now-lastInput>1500&&now-lastRender<48){renderedLast=false;return;}
- if(lowPower&&renderedLast)adaptDpr(dt,now);renderedLast=true;lastRender=now;
+ if(lowPower&&!benchUntil&&!tween&&!moved&&!shifting&&now-lastInput>1500&&now-lastRender<(now-lastInput>8000?98:48)){renderedLast=false;return;}
+ if(renderedLast)measure(dt,now);renderedLast=true;lastRender=now;
  const distance=camera.position.distanceTo(controls.target);for(const g of detailedGroups)g.visible=distance<4000;
+ if(lowPower){for(const t of forestTiles)if(t.trunk)t.trunk.visible=distance<1400;for(const m of farDetail)m.visible=distance<900;}
  if(featuredPin){const d=camera.position.distanceTo(featuredPin.position),k=clamp(d/160,1,26);featuredPin.scale.setScalar(k);featuredPin.rotation.y=now/1400;const fp=featured;if(fp?.label)fp.label.position.y=(featuredPin.userData.base+featuredPin.userData.head*k)*EX+2*k;}
  if(frame++%7===0){updateLabels();const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':'九华山全景 · 双指缩放';const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
  renderer.render(scene,camera);labels.render(scene,camera);if(frame===30)console.info('Map verification',JSON.stringify(window.mapDiagnostics));
 }
-started=true;$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;interactionGuide.start();},700);requestAnimationFrame(tick);
+started=true;benchUntil=performance.now()+3500;$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;interactionGuide.start();},700);requestAnimationFrame(tick);
 // Inspectable public diagnostics are also useful for verifying delivery, without private app state.
-window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;}};
+window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get quality(){return quality;},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;}};
 }
