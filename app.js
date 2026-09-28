@@ -10,7 +10,21 @@ const interactionGuide=setupInteractionGuide();
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const compactViewport=()=>matchMedia('(max-width:820px), (max-width:960px) and (orientation:landscape) and (max-height:520px)').matches;let mobile=compactViewport();
 // Phones and touch-only tablets get the lighter scene (fewer tree facets, no shadows, capped resolution) whatever their layout.
-const lowPower=mobile||matchMedia('(pointer:coarse)').matches&&!matchMedia('(any-pointer:fine)').matches;const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const lowPower=mobile||matchMedia('(pointer:coarse)').matches&&!matchMedia('(any-pointer:fine)').matches;
+// Picture-quality tiers, chosen automatically. Phones and touch-only tablets start at 标准, desktops at 极致. A short
+// benchmark after loading picks the tier (under 30 fps → 流畅 at once; clear headroom → try one tier up and keep it if it
+// holds ~45 fps), the result is remembered on the device for the next visit, and a device that later falls under ~25 fps
+// steps down. MSAA and the number of trees are fixed when the page opens; everything else switches live.
+const TIERS=[
+ {name:'流畅',dpr:1,pbr:false,blur:false,hiShapes:false,forest:.45,bamboo:false,trunkDist:0,detailDist:450,landmarkDist:2600,labelCap:16,shadows:false},
+ {name:'标准',dpr:1.5,pbr:false,blur:false,hiShapes:false,forest:1,bamboo:true,trunkDist:1400,detailDist:900,landmarkDist:4000,labelCap:null,shadows:false},
+ {name:'高清',dpr:2,pbr:true,blur:true,hiShapes:true,forest:1,bamboo:true,trunkDist:2600,detailDist:2600,landmarkDist:4000,labelCap:null,shadows:false},
+ {name:'极致',dpr:2,pbr:true,blur:true,hiShapes:true,forest:1,bamboo:true,trunkDist:1e9,detailDist:1e9,landmarkDist:4000,labelCap:null,shadows:true}];
+const maxTier=lowPower?2:3;
+const store={get(k){try{return localStorage.getItem('jiuhua.'+k);}catch{return null;}},set(k,v){try{localStorage.setItem('jiuhua.'+k,v);}catch{}}};
+let tier=+(store.get('autoTier')??(lowPower?1:3));if(!(tier>=0&&tier<=maxTier))tier=lowPower?1:3;
+let emergency=false; // below 流畅: automatic only, when even 流畅 cannot hold ~25 fps
+const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const rng=seed=>()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
@@ -34,9 +48,9 @@ function hAt(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-
 // No preserveDrawingBuffer: the capture button renders and copies in the same task, and keeping the buffer costs phones a copy per frame.
 // Low-power devices with dense screens skip MSAA: it doubles memory traffic on older mobile GPUs and the pixels are small.
 const renderer=new THREE.WebGLRenderer({antialias:!(lowPower&&devicePixelRatio>=2),alpha:true,powerPreference:'high-performance'});
-// Low-power devices also skip the frosted-glass blur behind panels (re-blurred every frame over the moving map): html.lite.
-document.documentElement.classList.toggle('lite',lowPower);
-let maxDpr=lowPower?1.5:2;const dprCap=()=>Math.min(devicePixelRatio,maxDpr,mobile?1.5:2),shadows=()=>!mobile&&!lowPower;
+// Tiers below 高清 skip the frosted-glass blur behind panels (re-blurred every frame over the moving map): html.lite.
+document.documentElement.classList.toggle('lite',!TIERS[tier].blur);
+const dprCap=()=>Math.min(devicePixelRatio,emergency?.8:TIERS[tier].dpr),shadows=()=>TIERS[tier].shadows&&!mobile&&!lowPower;
 renderer.setPixelRatio(dprCap());renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
 renderer.shadowMap.enabled=shadows();renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('#stage').appendChild(renderer.domElement);
 // Phones can drop the GPU context under memory pressure (other tabs, backgrounding); say so instead of leaving a frozen frame.
@@ -51,8 +65,19 @@ const color=c=>new THREE.Color(c);
 // Phones and tablets shade with Lambert (diffuse only): the scene is matte almost everywhere, so it looks nearly the same at
 // a fraction of the per-pixel cost. Gloss-only parameters are dropped there.
 const PBR_ONLY=['roughness','metalness','roughnessMap','metalnessMap','envMapIntensity'];
-function StdMat(o={}){if(!lowPower)return new THREE.MeshStandardMaterial(o);const q={...o};for(const k of PBR_ONLY)delete q[k];return new THREE.MeshLambertMaterial(q);}
+const lambertParams=o=>{const q={...o};for(const k of PBR_ONLY)delete q[k];return q;};
+function StdMat(o={}){const m=TIERS[tier].pbr?new THREE.MeshStandardMaterial(o):new THREE.MeshLambertMaterial(lambertParams(o));m.userData.params=o;return m;}
+// The other shading kind of a material, made once and cached both ways; settings changed after creation are carried over.
+const CARRY=['side','transparent','opacity','depthWrite','depthTest','polygonOffset','polygonOffsetFactor','polygonOffsetUnits','alphaTest','vertexColors','map','emissiveMap','emissiveIntensity','fog','toneMapped','flatShading','name'];
+function twinOf(m,pbr){if(!m.userData.params||m.isMeshStandardMaterial===pbr)return m;if(m.userData.twin)return m.userData.twin;
+ const t=pbr?new THREE.MeshStandardMaterial(m.userData.params):new THREE.MeshLambertMaterial(lambertParams(m.userData.params));
+ for(const k of CARRY)if(k in m&&k in t)t[k]=m[k];t.color?.copy(m.color);t.emissive?.copy(m.emissive);t.onBeforeCompile=m.onBeforeCompile;
+ t.userData.params=m.userData.params;t.userData.twin=m;m.userData.twin=t;return t;}
 const mat=(c,more={})=>StdMat({color:c,roughness:.9,metalness:0,...more});
+// Tree, bamboo and lantern shapes at two levels of detail; tiers below 高清 use the coarse ones (see setShapes).
+const SHAPES={};let lanternMesh=null;
+function shapes(hi){return SHAPES[hi]??=hi?{leaf:new THREE.SphereGeometry(1,7,5),pine:new THREE.ConeGeometry(1,1,9),trunk:new THREE.CylinderGeometry(.18,.3,1,5),bamboo:new THREE.SphereGeometry(1,7,6),lantern:new THREE.SphereGeometry(.24,10,8)}
+ :{leaf:softBlob(),pine:new THREE.ConeGeometry(1,1,6,1,true),trunk:new THREE.CylinderGeometry(.18,.3,1,3,1,true),bamboo:softBlob(),lantern:softBlob().scale(.24,.24,.24)};}
 const stone=mat('#b9b7a4'),wood=mat('#594937'),gold=mat('#ae833d',{roughness:.67}),red=mat('#943f2d'),roofDark=mat('#59605c'),glass=mat('#466266',{roughness:.3,metalness:.15});
 const boxGeo=new THREE.BoxGeometry(1,1,1),cylGeo=new THREE.CylinderGeometry(1,1,1,8);
 function box(parent,x,y,z,w,h,d,m){const o=new THREE.Mesh(boxGeo,m);o.position.set(x,y+h/2,z);o.scale.set(w,h,d);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;}
@@ -114,8 +139,8 @@ await new Promise(requestAnimationFrame);
 function textureTile(mode){const c=document.createElement('canvas');c.width=c.height=256;const ct=c.getContext('2d');ct.fillStyle=mode==='roof'?'#aaa99f':'#e6e3d9';ct.fillRect(0,0,256,256);const r=rng(mode==='roof'?44:98);for(let i=0;i<3500;i++){ct.fillStyle=`rgba(${r()>.5?'255,255,255':'50,55,44'},${r()*.07})`;ct.fillRect(r()*256,r()*256,1+r()*3,1+r()*2);}if(mode==='roof'){for(let x=0;x<256;x+=12){ct.fillStyle='#e3dfd550';ct.fillRect(x,0,3,256);ct.fillStyle='#222c2c60';ct.fillRect(x+8,0,2,256);}for(let y=0;y<256;y+=20){ct.fillStyle='#23333145';ct.fillRect(0,y,256,1);}}const tex=new THREE.CanvasTexture(c);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=8;return tex;}
 const roofTex=textureTile('roof'),wallTex=textureTile('wall');const walls=new Batch(),roofs=new Batch(),foundation=new Batch(),windowBatch=new Batch(),trim=new Batch(),signBatch=new Batch();
 const roofEdges=[];const detailedGroups=[];const pickables=[];
-// Details a phone cannot resolve from afar (windows ~1 m wide, lanterns 0.5 m): hidden beyond 900 m on low-power devices,
-// where they would only shimmer (no MSAA there) and cost triangles. See tick().
+// Details a phone cannot resolve from afar (windows ~1 m wide, lanterns 0.5 m): tiers below 高清 hide them beyond a
+// distance, where they would only shimmer (no MSAA on phones) and cost triangles. See tick().
 const farDetail=[];// Footprints drawn by hand-built landmarks below (化城寺, 万佛塔, 肉身宝殿 main hall, 北门, 地藏禅寺 hall) are not also extruded.
 const ROUSHEN_ID='overture-6eed6b02-0a6b-40b7-9326-5247a9383063';const replaced=new Set([609757872,609561169,G.buildings.find(b=>b.id===ROUSHEN_ID)?.osmId,609909704,609909706]); // + 肉身宝殿北门 and the 地藏禅寺 hall behind it
 for(const a of G.areas)for(const id of a.frame?.replaces||[])replaced.add(G.buildings.find(b=>b.id===id)?.osmId); // footprints inside hand-built sites (居之林)
@@ -211,7 +236,7 @@ for(let bi=0;bi<G.buildings.length;bi++){
 const wallMesh=walls.mesh(mat('#ffffff',{vertexColors:true,map:wallTex,side:THREE.DoubleSide}),built),roofMesh=roofs.mesh(mat('#ffffff',{vertexColors:true,map:roofTex,side:THREE.DoubleSide}),built);
 pickables.push(foundation.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),built));farDetail.push(windowBatch.mesh(mat('#ffffff',{vertexColors:true,roughness:.4,metalness:.05,side:THREE.DoubleSide}),built));trim.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),built);pickables.push(wallMesh,roofMesh);
 const signTex=new THREE.CanvasTexture(signCanvas);signTex.colorSpace=THREE.SRGBColorSpace;signTex.anisotropy=8;signBatch.mesh(StdMat({map:signTex,roughness:.55,side:THREE.DoubleSide,emissive:'#ffffff',emissiveMap:signTex,emissiveIntensity:.18}),built);
-if(lanternPts.length){const lm=new THREE.InstancedMesh(lowPower?softBlob().scale(.24,.24,.24):new THREE.SphereGeometry(.24,10,8),StdMat({color:'#c8261c',emissive:'#8a1208',emissiveIntensity:.55,roughness:.5}),lanternPts.length),o=new THREE.Object3D();lanternPts.forEach((p,i)=>{o.position.set(...p);o.scale.set(1,1.25,1);o.updateMatrix();lm.setMatrixAt(i,o.matrix);});built.add(lm);farDetail.push(lm);}
+if(lanternPts.length){const lm=lanternMesh=new THREE.InstancedMesh(shapes(TIERS[tier].hiShapes).lantern,StdMat({color:'#c8261c',emissive:'#8a1208',emissiveIntensity:.55,roughness:.5}),lanternPts.length),o=new THREE.Object3D();lanternPts.forEach((p,i)=>{o.position.set(...p);o.scale.set(1,1.25,1);o.updateMatrix();lm.setMatrixAt(i,o.matrix);});built.add(lm);farDetail.push(lm);}
 if(acPts.length){const am=new THREE.InstancedMesh(new THREE.BoxGeometry(.8,.55,.3),mat('#d8d8d2',{roughness:.6}),acPts.length),o=new THREE.Object3D();acPts.forEach((p,i)=>{o.position.set(p[0],p[1],p[2]);o.rotation.set(0,p[3],0);o.updateMatrix();am.setMatrixAt(i,o.matrix);});built.add(am);}
 const eg=new THREE.BufferGeometry();eg.setAttribute('position',new THREE.Float32BufferAttribute(roofEdges,3));built.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:'#3f3a33',transparent:true,opacity:.55})));
 
@@ -811,13 +836,12 @@ for(let i=0;i<treeLimit*2&&trees.length<treeLimit;i++){
  const s=6.5+rf()*6.7,bz=bambooZone(x,z,h,steep);if(bz&&rf()<bz){bamboo.push({x,z,h,s:9+rf()*4,r:rf()});continue;}trees.push({x,z,h,s,r:rf(),pine:rf()<.18+(h>800?.25:0)});
 }
 // The forest is cut into TILES×TILES blocks over the terrain, each with its own instanced trunks, broadleaf crowns, pine
-// cones and bamboo, so a view of part of the mountain skips the blocks outside it. Low-power devices use coarser shapes
-// (20-triangle crowns, three-sided trunks, six-sided cones, one plume per bamboo clump) and hide trunks from afar; the
-// adaptive quality further down can thin every block (setForestDensity keeps a tree's trunk and crowns together).
+// cones and bamboo, so a view of part of the mountain skips the blocks outside it. Tiers below 高清 use coarser shapes
+// (20-triangle crowns, three-sided trunks, six-sided cones) and hide trunks from afar; low-power devices plant one plume
+// per bamboo clump. The 流畅 tier thins every block (setForestDensity keeps a tree's trunk and crowns together).
 const TILES=3,tileOf=(x,z)=>Math.min(TILES-1,Math.max(0,Math.floor((x+W/2)/W*TILES)))*TILES+Math.min(TILES-1,Math.max(0,Math.floor((z+D/2)/D*TILES)));
 function softBlob(){const g=new THREE.IcosahedronGeometry(1,0);g.deleteAttribute('normal');g.deleteAttribute('uv');const m=mergeVertices(g);m.setAttribute('normal',m.getAttribute('position').clone());return m;}
-const leafGeo=lowPower?softBlob():new THREE.SphereGeometry(1,7,5),pineGeo=new THREE.ConeGeometry(1,1,lowPower?6:9,1,lowPower);
-const trunkGeo=lowPower?new THREE.CylinderGeometry(.18,.3,1,3,1,true):new THREE.CylinderGeometry(.18,.3,1,5),bambooGeo=lowPower?softBlob():new THREE.SphereGeometry(1,7,6);
+const S0=shapes(TIERS[tier].hiShapes);
 const trunkMat=mat('#686854'),leafMat=mat('#ffffff'),pineMat=mat('#ffffff'),bambooMat=mat('#ffffff',{roughness:.85}),culms=lowPower?1:4,culmW=lowPower?1.35:1;
 const forestTiles=[],tiles=[...Array(TILES*TILES)].map(()=>({list:[],bamboo:[]}));
 for(const t of trees)tiles[tileOf(t.x,t.z)].list.push(t);for(const t of bamboo)tiles[tileOf(t.x,t.z)].bamboo.push(t);
@@ -825,7 +849,7 @@ const dummy=new THREE.Object3D(),tc=new THREE.Color();
 const instanced=(geo,m,n,shadow)=>{if(!n)return null;const im=new THREE.InstancedMesh(geo,m,n);im.receiveShadow=shadow;forest.add(im);return im;};
 for(const tile of tiles){
  const L=tile.list,leafPre=[0],pinePre=[0];for(const t of L){leafPre.push(leafPre.at(-1)+(t.pine?0:1));pinePre.push(pinePre.at(-1)+(t.pine?1:0));}
- const trunk=instanced(trunkGeo,trunkMat,L.length,false),crown=instanced(leafGeo,leafMat,leafPre.at(-1)*2,true),cone=instanced(pineGeo,pineMat,pinePre.at(-1)*2,true),bam=instanced(bambooGeo,bambooMat,tile.bamboo.length*culms,true);
+ const trunk=instanced(S0.trunk,trunkMat,L.length,false),crown=instanced(S0.leaf,leafMat,leafPre.at(-1)*2,true),cone=instanced(S0.pine,pineMat,pinePre.at(-1)*2,true),bam=instanced(S0.bamboo,bambooMat,tile.bamboo.length*culms,true);
  let ti=0,li=0,pi=0,k=0;
  for(const t of L){dummy.position.set(t.x,t.h+t.s*.35,t.z);dummy.rotation.set(0,t.r*6.28,0);dummy.scale.set(1,t.s*.7,1);dummy.updateMatrix();trunk.setMatrixAt(ti++,dummy.matrix);
   for(let j=0;j<2;j++){if(t.pine){dummy.position.set(t.x,t.h+t.s*(.68+j*.36),t.z);dummy.scale.set(t.s*(.5-j*.12),t.s*.91,t.s*(.5-j*.12));tc.set(t.r>.5?'#304f39':'#385842');dummy.updateMatrix();cone.setMatrixAt(pi,dummy.matrix);cone.setColorAt(pi++,tc);}else{dummy.position.set(t.x+(j?1.7:-1.1),t.h+t.s*(.67+j*.13),t.z+(j?-1.2:.9));dummy.scale.set(t.s*(.59-j*.04),t.s*(.40+j*.03),t.s*.57);tc.set(['#3e5b36','#4b663d','#38583d','#526b42'][Math.floor(t.r*4)]);dummy.updateMatrix();crown.setMatrixAt(li,dummy.matrix);crown.setColorAt(li++,tc);}}
@@ -836,6 +860,13 @@ for(const tile of tiles){
  forestTiles.push({trunk,crown,cone,bam,n:L.length,leafPre,pinePre,nb:tile.bamboo.length});
 }
 function setForestDensity(f){for(const t of forestTiles){const K=Math.round(f*t.n);if(t.trunk)t.trunk.count=K;if(t.crown)t.crown.count=2*t.leafPre[K];if(t.cone)t.cone.count=2*t.pinePre[K];if(t.bam)t.bam.count=Math.round(f*t.nb)*culms;}}
+function setShapes(hi){const S=shapes(hi);for(const t of forestTiles){if(t.trunk)t.trunk.geometry=S.trunk;if(t.crown)t.crown.geometry=S.leaf;if(t.cone)t.cone.geometry=S.pine;if(t.bam)t.bam.geometry=S.bamboo;}if(lanternMesh)lanternMesh.geometry=S.lantern;}
+// Everything a tier controls that can change while the map is open (MSAA and the tree count are fixed at start-up).
+function applyTier(){const T=TIERS[tier];renderer.setPixelRatio(dprCap());
+ scene.traverse(o=>{if(o.isMesh&&o.material&&!Array.isArray(o.material))o.material=twinOf(o.material,T.pbr);});
+ document.documentElement.classList.toggle('lite',!T.blur);setShapes(T.hiShapes);setForestDensity(emergency?.3:T.forest);
+ for(const t of forestTiles)if(t.bam)t.bam.visible=T.bamboo&&!emergency;labelCap=emergency?12:T.labelCap;
+ const sh=shadows();if(renderer.shadowMap.enabled!==sh){renderer.shadowMap.enabled=sun.castShadow=sh;scene.traverse(o=>{if(o.material)for(const m of[].concat(o.material))m.needsUpdate=true;});}}
 
 const movers=[];
 for(const cable of G.cables){const a=cable.pts[0],b=cable.pts.at(-1),dist=Math.hypot(b[0]-a[0],b[1]-a[1]);const pts=[];
@@ -1086,19 +1117,26 @@ function updateLabels(){const show=$('#layer-labels').checked,showEstimate=$('#l
 }
 // Low-power devices draw ~20 fps while nothing moves (only the cable cars and the 居之林 pin animate then), and ~10 fps
 // once the map has been left alone for a while, which saves battery and heat; any touch, flight or sheet movement
-// returns to full rate. Adaptive quality: the first seconds after loading render continuously as a benchmark, and later
-// every run of back-to-back frames counts. Whenever the map cannot hold ~25 fps the next step is taken: render
-// resolution 1.25, then 1 device pixel, then a thinner forest (60 %, 40 %), then fewer labels.
-let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,frameAvg=16.7,frameN=0,benchUntil=0,qualityAt=0,quality=0;
+// returns to full rate. Tier benchmark (see TIERS): while it runs every frame is drawn and its interval sampled. Phase 1
+// measures the starting tier: under 30 fps → 流畅 (or below it); 50 fps or more → phase 2 tries one tier up and keeps it
+// only at ~45 fps or better. Afterwards runs of back-to-back frames are watched and a tier under ~25 fps steps down.
+let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,benchUntil=0,benchPhase=0,benchFrom=0,samples=[],frameAvg=16.7,frameN=0,watchAt=0;
 for(const ev of['pointerdown','pointermove','wheel','keydown','input','change'])addEventListener(ev,()=>{lastInput=performance.now();},{capture:true,passive:true});
-const setDpr=v=>{if(dprCap()<=v)return false;maxDpr=v;renderer.setPixelRatio(dprCap());return true;};
-const QUALITY=[()=>setDpr(1.25),()=>setDpr(1),()=>{setForestDensity(.6);return true;},()=>{setForestDensity(.4);return true;},()=>{labelCap=mobile?16:36;return true;}];
-function stepQuality(n){while(n>0&&quality<QUALITY.length){if(QUALITY[quality++]())n--;}frameAvg=16.7;frameN=0;}
+const trimmedMean=a=>{const q=[...a].sort((x,y)=>x-y).slice(0,Math.max(1,Math.ceil(a.length*.9)));return q.reduce((x,y)=>x+y,0)/q.length;};
+function startBench(phase){benchPhase=phase;benchUntil=performance.now()+3000;samples=[];}
+function setTier(t,why){t=Math.max(0,Math.min(maxTier,t));const was=tier,wasE=emergency;tier=t;emergency=why==='emergency';if(t!==was||emergency!==wasE)applyTier();}
 function measure(dt,now){
- if(now<benchUntil-2700)return; // the first frames compile shaders and upload geometry
- frameAvg=frameN?frameAvg+(Math.min(dt,150)-frameAvg)*(now<benchUntil?.12:.05):Math.min(dt,150);frameN++;
- if(benchUntil&&now>=benchUntil){benchUntil=0;qualityAt=now+2500;if(frameAvg>40)stepQuality(frameAvg>95?3:frameAvg>62?2:1);return;}
- if(!benchUntil&&now>qualityAt&&frameN>30&&frameAvg>40){stepQuality(1);qualityAt=now+2500;}
+ if(benchUntil){if(now<benchUntil-2200)return; // the first frames of a phase compile shaders and upload geometry
+  samples.push(Math.min(dt,200));if(now<benchUntil||samples.length<12)return;
+  const ms=trimmedMean(samples);benchUntil=0;frameAvg=ms;frameN=0;watchAt=now+4000;
+  if(benchPhase===1){if(ms>33.3){if(tier>0)setTier(0,'slow');else if(!emergency)setTier(0,'emergency');}
+   else if(ms<20&&tier<maxTier&&!emergency){benchFrom=tier;tier=tier+1;applyTier();startBench(2);return;}}
+  else if(benchPhase===2&&ms>22){tier=benchFrom;applyTier();}
+  store.set('autoTier',tier);return;}
+ frameAvg=frameN?frameAvg+(Math.min(dt,150)-frameAvg)*.05:Math.min(dt,150);frameN++;
+ if(now>watchAt&&frameN>40&&frameAvg>40){
+  if(tier>0)setTier(tier-1,'slow');else if(!emergency)setTier(0,'emergency');
+  store.set('autoTier',tier);frameN=0;watchAt=now+4000;}
 }
 function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;return;}
  const dt=lastFrame?now-lastFrame:16.7;lastFrame=now;
@@ -1110,13 +1148,13 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  if(shifting){const k=1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
  if(lowPower&&!benchUntil&&!tween&&!moved&&!shifting&&now-lastInput>1500&&now-lastRender<(now-lastInput>8000?98:48)){renderedLast=false;return;}
  if(renderedLast)measure(dt,now);renderedLast=true;lastRender=now;
- const distance=camera.position.distanceTo(controls.target);for(const g of detailedGroups)g.visible=distance<4000;
- if(lowPower){for(const t of forestTiles)if(t.trunk)t.trunk.visible=distance<1400;for(const m of farDetail)m.visible=distance<900;}
+ const distance=camera.position.distanceTo(controls.target),TQ=TIERS[tier];for(const g of detailedGroups)g.visible=distance<TQ.landmarkDist;
+ for(const t of forestTiles)if(t.trunk)t.trunk.visible=distance<TQ.trunkDist;for(const m of farDetail)m.visible=distance<TQ.detailDist;
  if(featuredPin){const d=camera.position.distanceTo(featuredPin.position),k=clamp(d/160,1,26);featuredPin.scale.setScalar(k);featuredPin.rotation.y=now/1400;const fp=featured;if(fp?.label)fp.label.position.y=(featuredPin.userData.base+featuredPin.userData.head*k)*EX+2*k;}
  if(frame++%7===0){updateLabels();const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':'九华山全景 · 双指缩放';const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
  renderer.render(scene,camera);labels.render(scene,camera);if(frame===30)console.info('Map verification',JSON.stringify(window.mapDiagnostics));
 }
-started=true;benchUntil=performance.now()+3500;$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;interactionGuide.start();},700);requestAnimationFrame(tick);
+started=true;applyTier();startBench(1);$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;interactionGuide.start();},700);requestAnimationFrame(tick);
 // Inspectable public diagnostics are also useful for verifying delivery, without private app state.
-window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get quality(){return quality;},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;}};
+window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get quality(){return TIERS[tier].name+(emergency?'-':'');},get tier(){return tier;},get frameMs(){return Math.round(frameAvg*10)/10;},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;}};
 }
