@@ -242,11 +242,12 @@ export function setupRoutes(ctx) {
   }
   function legIcon(leg) { const m = leg.parts.find(p => p.mode !== 'walk')?.mode; return m === 'bus' ? BUS_SVG : m ? RIDE_SVG : WALK_SVG; }
 
+  // The name, the key figures and the two map actions come first, so a short phone sheet shows 路线预演 without scrolling;
+  // the description, height profile and itinerary follow.
   function renderDetail(route) {
     detail.replaceChildren();
-    const back = el('button', 'route-back', '全部路线'); back.type = 'button'; back.onclick = close;
-    const head = el('div', 'route-head');
-    head.append(el('span', 'rc-by', route.by), el('h3', '', route.name), el('p', 'route-summary', route.summary));
+    const top = el('div', 'route-top'), back = el('button', 'route-back', '全部路线'); back.type = 'button'; back.onclick = close;
+    top.append(back, el('span', 'rc-by', route.by));
     const stats = el('div', 'route-stats');
     const walkTime = route.walkMinutes >= 60 ? `约 ${(route.walkMinutes / 60).toFixed(1)} 小时` : `约 ${route.walkMinutes} 分钟`;
     for (const [v, k] of [[route.duration, '全程'], [km(route.walkM), '步行'], [walkTime, '步行用时'], [`${route.climb} 米`, '累计爬升']]) {
@@ -276,7 +277,8 @@ export function setupRoutes(ctx) {
     const links = el('div', 'links');
     for (const s of route.sources) { if (s.url) { const a = el('a', '', s.name); a.href = s.url; a.target = '_blank'; a.rel = 'noopener'; links.append(a); } else links.append(el('span', '', s.name)); }
     more.append(links);
-    detail.append(back, head, stats, acts, profile(route), steps, el('h4', '', '出发前看看'), tips, more);
+    detail.append(top, el('h3', 'route-title', route.name), stats, acts, el('p', 'route-summary', route.summary), profile(route), steps,
+      el('h4', '', '出发前看看'), tips, more);
     detail.scrollTop = 0;
   }
 
