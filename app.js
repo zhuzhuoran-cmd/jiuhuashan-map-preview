@@ -14,9 +14,11 @@ const lowPower=mobile||matchMedia('(pointer:coarse)').matches&&!matchMedia('(any
 // Picture-quality tiers, chosen automatically. Phones and touch-only tablets start at 标准, desktops at 极致. A short
 // benchmark after loading picks the tier (under 30 fps → 流畅 at once; clear headroom → try one tier up and keep it if it
 // holds ~45 fps), the result is remembered on the device for the next visit, and a device that later falls under ~25 fps
-// steps down. MSAA and the number of trees are fixed when the page opens; everything else switches live.
+// steps down. MSAA and the number of trees are fixed when the page opens; everything else switches live. On phones that
+// struggle the forest is most of the frame (measured 2026-09-28), so 流畅 and below turn it off (the owner's choice);
+// the visitor can switch it back on under 图层 (applyTrees).
 const TIERS=[
- {name:'流畅',dpr:1,pbr:false,blur:false,hiShapes:false,forest:.45,bamboo:false,trunkDist:0,detailDist:450,landmarkDist:2600,labelCap:16,shadows:false},
+ {name:'流畅',dpr:1,pbr:false,blur:false,hiShapes:false,forest:0,bamboo:false,trunkDist:0,detailDist:450,landmarkDist:2600,labelCap:16,shadows:false},
  {name:'标准',dpr:1.5,pbr:false,blur:false,hiShapes:false,forest:1,bamboo:true,trunkDist:1400,detailDist:900,landmarkDist:4000,labelCap:null,shadows:false},
  {name:'高清',dpr:2,pbr:true,blur:true,hiShapes:true,forest:1,bamboo:true,trunkDist:2600,detailDist:2600,landmarkDist:4000,labelCap:null,shadows:false},
  {name:'极致',dpr:2,pbr:true,blur:true,hiShapes:true,forest:1,bamboo:true,trunkDist:1e9,detailDist:1e9,landmarkDist:4000,labelCap:null,shadows:true}];
@@ -390,6 +392,27 @@ function kerb(batch,ring,{h=.3,w=.35,co='#a39e91'}={}){const sgn=ringInward(ring
    for(const m of[pole,head,cap]){m.castShadow=true;decor.add(m);}}
   const p=G.places.find(p=>p.n==='神光岭广场');if(p){landmarkTop.set(p.n,hAt(p.x,p.z)+3);p.modelNote='广场铺装、路缘、灯柱与西北角草坪按卫星影像示意复原；铺地纹样与灯具样式为示意。';}
  }}
+
+// 三角洲车站台阶 (user, 2026-09-28): steps from 莲花大道 down to 神光岭广场, about 12 m lower (corrections.py lowers the
+// square's ground to match). 15 cm risers are laid on that slope and each tread runs on until the ground ahead has dropped
+// below the next riser, so the long treads by the road read as its landing; granite cheek walls with a coping on both
+// sides. Width and step size are estimates. Picking the steps opens the stop.
+for(const r of G.roads){if(r.model!=='stair')continue;
+ const [a,b]=r.pts,len=Math.hypot(b[0]-a[0],b[1]-a[1]),half=r.width/2,WALL=.4,inner=half-WALL;
+ const {rot,wp}=footprintFrame(a[0],a[1],(b[0]-a[0])/len,(b[1]-a[1])/len),g=localGroup(a[0],a[1],'三角洲车站');g.rotation.y=rot;const y0=g.position.y;
+ const ground=(lx,lz)=>{const [x,z]=wp(lx,lz);return Math.max(hAt(x,z),hMesh(x,z));};
+ // highest ground across the stair every 25 cm, then the highest from there to the foot, so no tread dips under the ground
+ const ds=.25,n=Math.ceil(len/ds),env=[];for(let k=0;k<=n;k++){let h=-1e9;for(let o=-half;o<=half+.01;o+=half/3)h=Math.max(h,ground(o,Math.min(len,k*ds)));env.push(h+.06);}
+ for(let k=n-1;k>=0;k--)env[k]=Math.max(env[k],env[k+1]);
+ const top=env[0],foot=env[n],count=Math.max(1,Math.round((top-foot)/.15)),rise=(top-foot)/count;
+ const granite=mat('#bdb8aa',{roughness:.85}),wall=mat('#9d998b',{roughness:.9}),coping=mat('#d2cdc0',{roughness:.8});
+ for(let q=0,k=0,s0=0;q<count&&s0<len;q++){const h=top-q*rise;while(k<n&&env[k]>h-rise+1e-6)k++;const s1=Math.min(len,Math.max(s0+.28,k*ds)),zc=(s0+s1)/2;
+  let lo=1e9;for(const lz of[s0,zc,s1])for(const lx of[-half,0,half])lo=Math.min(lo,ground(lx,lz));const yb=lo-.8-y0,yt=h-y0;
+  box(g,0,yb,zc,2*inner,yt-yb,s1-s0,granite);
+  for(const sd of[-1,1]){box(g,sd*(inner+WALL/2),yb,zc,WALL,yt+.85-yb,s1-s0,wall);box(g,sd*(inner+WALL/2),yt+.85,zc,WALL+.1,.1,s1-s0,coping);}
+  s0=s1;}
+ const p=G.places.find(p=>p.n==='三角洲车站');if(p)p.modelNote='车站旁下到神光岭广场的台阶按用户说明示意复原：高差约 12 米（广场地面已按此修正）；台阶宽度、级数和踏步尺寸为估计。';
+}
 
 // 肉身宝殿北门 (identified by the user from photos; OSM way 609909704): a red three-arch 牌楼 with gold couplets on the
 // piers, painted 彩画 beams, the plaque 行願無盡 and a 山門 tablet, five tiled roofs with dragons on the top ridge, black
@@ -813,7 +836,8 @@ for(const id of[538484526,538484527,538484528,609990014,609990009]){const b=G.bu
 // Roads, water, steps and bridge parapets are draped along the recorded centerlines.
 function ribbon(pts,width,batch,col,lift=.22){const samples=[];for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],dist=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.max(1,Math.ceil(dist/5));for(let j=0;j<n;j++)samples.push([a[0]+(b[0]-a[0])*j/n,a[1]+(b[1]-a[1])*j/n]);}samples.push(pts.at(-1));for(let i=1;i<samples.length;i++){const a=samples[i-1],b=samples[i],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.001)continue;const nx=-(b[1]-a[1])/len*width/2,nz=(b[0]-a[0])/len*width/2;batch.quad([a[0]-nx,hAt(a[0]-nx,a[1]-nz)+lift,a[1]-nz],[b[0]-nx,hAt(b[0]-nx,b[1]-nz)+lift,b[1]-nz],[b[0]+nx,hAt(b[0]+nx,b[1]+nz)+lift,b[1]+nz],[a[0]+nx,hAt(a[0]+nx,a[1]+nz)+lift,a[1]+nz],col);}return samples;}
 const roadB=new Batch(),trailB=new Batch(),waterB=new Batch(),markB=new Batch();
-for(const r of G.roads){const isTrail=['steps','path','footway'].includes(r.kind);const ss=ribbon(r.pts,r.width,isTrail?trailB:roadB,isTrail?'#b6b29b':'#879087',isTrail?.28:.25);
+for(const r of G.roads){if(r.model==='stair')continue; // modelled above (三角洲车站台阶)
+ const isTrail=['steps','path','footway'].includes(r.kind);const ss=ribbon(r.pts,r.width,isTrail?trailB:roadB,isTrail?'#b6b29b':'#879087',isTrail?.28:.25);
  if(r.kind==='primary'){for(let i=1;i<ss.length;i+=4)ribbon([ss[i-1],ss[i]],.11,markB,'#e5dcc0',.31);}
  if(r.kind==='steps'){for(let i=1;i<ss.length;i++){const a=ss[i-1],b=ss[i],len=Math.hypot(b[0]-a[0],b[1]-a[1]),nx=-(b[1]-a[1])/len,nz=(b[0]-a[0])/len;for(let t=0;t<1;t+=.16){const x=a[0]+(b[0]-a[0])*t,z=a[1]+(b[1]-a[1])*t;line(trailGroup,[[x+nx*r.width*.45,hAt(x,z)+.38,z+nz*r.width*.45],[x-nx*r.width*.45,hAt(x,z)+.38,z-nz*r.width*.45]],'#828a7a');}}}
  if(r.bridge){for(const side of[-1,1]){const pts=r.pts.map((p,i)=>{const q=r.pts[Math.min(i+1,r.pts.length-1)]||p;const prev=r.pts[Math.max(0,i-1)],dx=q[0]-prev[0],dz=q[1]-prev[1],l=Math.hypot(dx,dz)||1;return[p[0]-dz/l*r.width/2*side,hAt(...p)+1.3,p[1]+dx/l*r.width/2*side];});line(decor,pts,'#ceccc0');}}
@@ -827,7 +851,9 @@ $('#load-text').textContent='铺设山林、缆车与商家标记';await new Pro
 // round the town. Density falls off with distance from the 闵园 villages; exact grove outlines are not mapped.
 const minyuanPts=G.places.filter(p=>['上闵园','中闵园','下闵园','闵园'].includes(p.n)).map(p=>[p.x,p.z]);
 function bambooZone(x,z,h,steep){if(h<420||h>1000||steep>1.1)return 0;let d=1e9;for(const[a,b]of minyuanPts)d=Math.min(d,Math.hypot(x-a,z-b));return d<900?.55:(h<760&&d<2600?.12:0);}
-const bamboo=[];const trees=[],rf=rng(892);const treeLimit=lowPower?22000:56000;
+// Phones plant 6 600 trees, 30 % of the 22 000 they had (the owner's choice once the forest was measured, 2026-09-28);
+// desktops keep 56 000.
+const bamboo=[];const trees=[],rf=rng(892);const treeLimit=lowPower?6600:56000;
 for(let i=0;i<treeLimit*2&&trees.length<treeLimit;i++){
  const x=(rf()-.5)*W*.998,z=(rf()-.5)*D*.998,h=hAt(x,z);
  if(blocked(x,z)||h<100||h>1310)continue;
@@ -838,7 +864,8 @@ for(let i=0;i<treeLimit*2&&trees.length<treeLimit;i++){
 // The forest is cut into TILES×TILES blocks over the terrain, each with its own instanced trunks, broadleaf crowns, pine
 // cones and bamboo, so a view of part of the mountain skips the blocks outside it. Tiers below 高清 use coarser shapes
 // (20-triangle crowns, three-sided trunks, six-sided cones) and hide trunks from afar; low-power devices plant one plume
-// per bamboo clump. The 流畅 tier thins every block (setForestDensity keeps a tree's trunk and crowns together).
+// per bamboo clump. A tier can thin every block (setForestDensity keeps a tree's trunk and crowns together); 流畅 and
+// below hide the forest (applyTrees).
 const TILES=3,tileOf=(x,z)=>Math.min(TILES-1,Math.max(0,Math.floor((x+W/2)/W*TILES)))*TILES+Math.min(TILES-1,Math.max(0,Math.floor((z+D/2)/D*TILES)));
 function softBlob(){const g=new THREE.IcosahedronGeometry(1,0);g.deleteAttribute('normal');g.deleteAttribute('uv');const m=mergeVertices(g);m.setAttribute('normal',m.getAttribute('position').clone());return m;}
 const S0=shapes(TIERS[tier].hiShapes);
@@ -860,11 +887,15 @@ for(const tile of tiles){
  forestTiles.push({trunk,crown,cone,bam,n:L.length,leafPre,pinePre,nb:tile.bamboo.length});
 }
 function setForestDensity(f){for(const t of forestTiles){const K=Math.round(f*t.n);if(t.trunk)t.trunk.count=K;if(t.crown)t.crown.count=2*t.leafPre[K];if(t.cone)t.cone.count=2*t.pinePre[K];if(t.bam)t.bam.count=Math.round(f*t.nb)*culms;}}
+// 山林植被: the tier decides whether the forest shows until the visitor flips the switch under 图层, whose choice then
+// stands. The switch always shows the real state, so it is off when a slow phone has the forest turned off.
+let treesChoice=null;
+function applyTrees(){const T=TIERS[tier],on=treesChoice??(T.forest>0&&!emergency);forest.visible=on;$('#layer-trees').checked=on;if(on)setForestDensity(T.forest||1);}
 function setShapes(hi){const S=shapes(hi);for(const t of forestTiles){if(t.trunk)t.trunk.geometry=S.trunk;if(t.crown)t.crown.geometry=S.leaf;if(t.cone)t.cone.geometry=S.pine;if(t.bam)t.bam.geometry=S.bamboo;}if(lanternMesh)lanternMesh.geometry=S.lantern;}
 // Everything a tier controls that can change while the map is open (MSAA and the tree count are fixed at start-up).
 function applyTier(){const T=TIERS[tier];renderer.setPixelRatio(dprCap());
  scene.traverse(o=>{if(o.isMesh&&o.material&&!Array.isArray(o.material))o.material=twinOf(o.material,T.pbr);});
- document.documentElement.classList.toggle('lite',!T.blur);setShapes(T.hiShapes);setForestDensity(emergency?.3:T.forest);
+ document.documentElement.classList.toggle('lite',!T.blur);setShapes(T.hiShapes);applyTrees();
  for(const t of forestTiles)if(t.bam)t.bam.visible=T.bamboo&&!emergency;labelCap=emergency?12:T.labelCap;
  const sh=shadows();if(renderer.shadowMap.enabled!==sh){renderer.shadowMap.enabled=sun.castShadow=sh;scene.traverse(o=>{if(o.material)for(const m of[].concat(o.material))m.needsUpdate=true;});}}
 
@@ -1053,7 +1084,7 @@ function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),open=!p.cl
  return{left,top,right,bottom,shiftX:shiftTarget.x,shiftY:shiftTarget.y};}
 routes=setupRoutes({routes:G.routes||[],world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>{tween=null;},
  closeSheetsForRoute:()=>{if(!mobile)return;closeCard(false);$('#panel').classList.add('closed');resize();}});
-$('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>forest.visible=e.target.checked;$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
+$('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>{treesChoice=e.target.checked;applyTrees();};$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
 $('#height').oninput=e=>{const old=EX;EX=+e.target.value;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=EX;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`视觉增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(EX-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(EX-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*EX;for(const q of extraLabels)q.label.position.y=(q.top+4)*EX;};
 const S=G.stats,ST=S.buildingStyles||{};
 const pubCount=places.filter(p=>p.searchable&&['service','transport'].includes(p.category)).length,sightCount=places.filter(p=>['sight','nature','village'].includes(p.category)).length;

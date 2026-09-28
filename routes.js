@@ -272,7 +272,7 @@ export function setupRoutes(ctx) {
     });
     const tips = el('ul', 'route-tips'); for (const t of route.tips) tips.append(el('li', '', t));
     const more = el('details', 'more'); more.append(el('summary', '', '资料与依据'));
-    more.append(el('p', '', '线路沿地图上的步道、台阶和街道绘制，进出寺院的最后一小段按直线示意。步行时间按距离和坡度估算（台阶按慢三成计），每个人快慢不同；标“业主提供”的为居之林业主给出的时间。缆车、索道和景交车的乘坐时间按线路长度估算，不含排队。开放和运行时间以现场公示为准。'));
+    more.append(el('p', '', '线路沿地图上的步道、台阶和街道绘制；地图上没有画出的台阶、穿过广场和北门门楼的一段以及进出寺院的最后一小段按直线示意。步行时间按距离和坡度估算（台阶按慢三成计），每个人快慢不同；标“业主提供”的为居之林业主给出的时间。缆车、索道和景交车的乘坐时间按线路长度估算，不含排队。开放和运行时间以现场公示为准。'));
     const links = el('div', 'links');
     for (const s of route.sources) { if (s.url) { const a = el('a', '', s.name); a.href = s.url; a.target = '_blank'; a.rel = 'noopener'; links.append(a); } else links.append(el('span', '', s.name)); }
     more.append(links);
