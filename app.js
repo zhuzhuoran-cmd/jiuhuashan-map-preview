@@ -1073,7 +1073,7 @@ function onMapTap(e){
  const i=hit.object.userData.triangleIds?.[hit.faceIndex];if(i>=0)selectBuilding(G.buildings[i]);
 }
 
-function filtered(p){return(category==='all'||(GROUPS[category]||[category]).includes(p.category))&&(!search||p.searchable&&(p.n+' '+(p.address||'')+' '+(p.aliases||[]).join(' ')).includes(search));}
+function filtered(p,query=search){return(category==='all'||(GROUPS[category]||[category]).includes(p.category))&&(!query||p.searchable&&(p.n+' '+(p.address||'')+' '+(p.aliases||[]).join(' ')).includes(query));}
 function renderList(){const list=$('#place-list');list.replaceChildren();const found=places.filter(p=>p.searchable&&(filtered(p)||p===featured&&category==='all'&&!search)).sort((a,b)=>(b===featured)-(a===featured)||a.p-b.p||a.n.localeCompare(b.n,'zh-CN'));
  $('#list-summary').textContent=`${found.length} 个结果 · 可搜寺庙、景点、村名与公共设施`;
  const shown=found.slice(0,search?400:220);
@@ -1149,8 +1149,10 @@ addEventListener('keydown',e=>{const v=$('#viewer');if(!v.hidden){if(e.key==='Es
 const temp=new THREE.Vector3();
 function occluded(p){const a=camera.position,b=p.label.position;for(let k=2;k<24;k++){const t=k/24,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;if(Math.abs(x)>W/2||Math.abs(z)>D/2)continue;if(hAt(x,z)*EX>a.y+(b.y-a.y)*t+4)return true;}return false;}
 function updateLabels(){const show=$('#layer-labels').checked,showEstimate=$('#layer-estimates').checked,cands=[],w=innerWidth,h=innerHeight,cam=camera.position,cap=labelCap??(mobile?28:60);
+ // Keep the query for reopening search, but only filter map labels while its panel is visible.
+ const mapQuery=!$('#panel').classList.contains('closed')&&!$('#tab-places').hidden?search:'';
  for(const p of places.concat(extraLabels)){if(!p.label)continue;const lp=p.label.position,dist=Math.hypot(lp.x-cam.x,lp.y-cam.y,lp.z-cam.z);
-  let v=show&&(dist<p.limit||p===selected||(p.hall&&p.parent===selected&&dist<900))&&(p.road||p.hall||p.featured||(filtered(p)&&(showEstimate||!estimated(p))));let x=0,y=0;
+  let v=show&&(dist<p.limit||p===selected||(p.hall&&p.parent===selected&&dist<900))&&(p.road||p.hall||p.featured||(filtered(p,mapQuery)&&(showEstimate||!estimated(p))));let x=0,y=0;
   if(v){temp.copy(lp).project(camera);x=(temp.x+1)*w/2;y=(1-temp.y)*h/2;if(temp.z>1||temp.z<0||x<p.labelWidth/2+4||x>w-p.labelWidth/2-4||y<35||y>h-18)v=false;}
   if(v&&!p.road&&!p.featured&&occluded(p))v=false;cands.push({p,dist,x,y,v});}
  cands.sort((a,b)=>(!!b.p.featured)-(!!a.p.featured)||(b.p===selected)-(a.p===selected)||a.p.p-b.p.p||a.dist-b.dist);const occupied=[];visibleLabelCount=0;
