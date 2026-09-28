@@ -3,6 +3,7 @@ import {createMapControls} from './map-input.js';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js';
 import {setupRoutes} from './routes.js';
+import {setupGuide,kindLabel} from './guide.js';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -43,7 +44,7 @@ function fatal(msg){const l=$('#loading');l.hidden=false;l.classList.remove('don
 addEventListener('gesturestart',e=>e.preventDefault());
 try{await init();}catch(e){console.error(e);fatal(/webgl/i.test(e.message)?'这个浏览器无法显示三维地图（WebGL 不可用）。请换用系统浏览器或更新浏览器后重试；在微信里可点右上角“···”，选“在浏览器打开”。':'地图加载失败，请重新加载。'+e.message);}
 async function init(){
-const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20260929-place-review'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
+const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20260929-guide'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
 const {W,D,N}=M, bytes=Uint8Array.from(atob(M.h),c=>c.charCodeAt(0)),dv=new DataView(bytes.buffer),H=new Float32Array(N*N);
 for(let i=0;i<H.length;i++)H[i]=dv.getUint16(i*2,true)/4;
 let EX=1;const hMin=Math.min(...H);
@@ -1041,12 +1042,16 @@ function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('
  const card=cardBase(p.displayName||(p.featured?p.shortName:p.n),p.featured?'精选民宿 · 实拍建模':CAT[p.category]||'地点',{cat:p.category,sub:p.address||p.zone||'',hero,featured:!!p.featured});
  const chips=node('div','chips');if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(hAt(p.x,p.z))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));card.append(chips);if(p.featured&&G.routes?.some(r=>r.id==='juzhilin-halfday')){const r=G.routes.find(r=>r.id==='juzhilin-halfday'),t=node('button','route-teaser');t.type='button';t.innerHTML=ROUTE_SVG;const tx=node('span','');tx.append(node('b','','从这里出发 · '+r.short),node('small','',`${r.duration} · 肉身宝殿 → 化城寺 → 缆车上百岁宫 · 看路线`));t.append(tx);t.onclick=()=>routes?.open(r.id);card.append(t);}
  if(p.featured)card.append(node('p','lead','三层退台的山地民宿：屋顶露台远眺九华诸峰，二层木平台与罗汉松小院，门前停车场带充电桩，挡墙上方是挂满灯笼的大松树。'));
+ // Why go first, then the story with how each paragraph should be read; where a story exists the building notes move into 资料与依据.
+ if(p.highlight){const h=node('p','highlight');h.append(node('b','','看点'),p.highlight);card.append(h);}
  if(p.note)card.append(node('p','lead',p.note));
- if(p.architecture)card.append(node('p','',p.architecture));
+ if(p.story?.length){const box=node('div','story-box');box.append(node('h4','','文化看点'));for(const s of p.story){const para=node('p','story');para.append(kindLabel(s.kind),s.text);box.append(para);}
+  if(p.storySources?.length){const src=sourceLinks({sources:p.storySources});src.prepend(node('span','','出处'));box.append(src);}card.append(box);}
+ else if(p.architecture)card.append(node('p','',p.architecture));
  if(p.transit?.length){const box=node('div','transit');for(const t of p.transit){box.append(node('p','',`${t.route}${t.stop&&t.route!==t.stop?`（${t.stop}站）`:''}：${t.hours}`));if(t.order)box.append(node('small','',t.order));if(t.phone)box.append(node('small','',`咨询 ${t.phone}`));}box.append(node('small','',`时间以现场为准 · 九华山风景区官网 ${G.transit?.retrieved||''} 查询`));card.append(box);}
  if(p.halls?.length)card.append(node('p','',`寺内殿堂 ${p.halls.length} 处：${p.halls.slice(0,8).map(h=>h.n).join('、')}${p.halls.length>8?'等':''}；靠近时显示为小标注。`));
  const d=more(p.featured?'建模说明':'资料与依据');
- for(const t of[`定位：${qualityText(p)}`,p.modelNote,p.positionNote,p.viewing?.source,p.aliases?.length&&!p.featured&&('其他名称：'+p.aliases.slice(0,4).join('、')),p.category==='village'&&p.addressCount&&`约 ${p.addressCount} 个公开地址含此地名。`,p.quality?.startsWith('legacy')&&'此点沿用原版导览位置，尚未获得独立坐标证据；虚线标注表示待核。'])if(t)d.append(node('p','',t));
+ for(const t of[`定位：${qualityText(p)}`,p.story?.length&&p.architecture,p.modelNote,p.positionNote,p.viewing?.source,p.aliases?.length&&!p.featured&&('其他名称：'+p.aliases.slice(0,4).join('、')),p.category==='village'&&p.addressCount&&`约 ${p.addressCount} 个公开地址含此地名。`,p.quality?.startsWith('legacy')&&'此点沿用原版导览位置，尚未获得独立坐标证据；虚线标注表示待核。'])if(t)d.append(node('p','',t));
  d.append(node('p','coords',`${p.lon?.toFixed(6)??''}°E · ${p.lat?.toFixed(6)??''}°N`),sourceLinks(p));card.append(d);
  const acts=node('div','card-actions'),go=actionBtn('primary',GO_SVG,'靠近查看');go.onclick=()=>{saveHome();fly(p.featured?featuredPose(70):placePose(p,true));};acts.append(go);
  if(p.featured){const call=node('a','btn accent');call.href='tel:'+TEL;call.innerHTML=PHONE_SVG;call.append(node('span','full','致电 '+TEL_TEXT),node('span','short','致电民宿'));call.setAttribute('aria-label','致电居之林民宿 '+TEL_TEXT);acts.append(call);}
@@ -1080,14 +1085,14 @@ function filtered(p,query=search){return(category==='all'||(GROUPS[category]||[c
 function renderList(){const list=$('#place-list');list.replaceChildren();const found=places.filter(p=>p.searchable&&(filtered(p)||p===featured&&category==='all'&&!search)).sort((a,b)=>(b===featured)-(a===featured)||a.p-b.p||a.n.localeCompare(b.n,'zh-CN'));
  $('#list-summary').textContent=`${found.length} 个结果 · 可搜寺庙、景点、村名与公共设施`;
  const shown=found.slice(0,search?400:220);
- shown.forEach((p,i)=>{const b=node('button','place-item'+(p===featured?' featured':''));b.style.animationDelay=Math.min(i,14)*16+'ms';b.dataset.name=p.n;b.type='button';b.append(node('span','pi-icon c-'+p.category,p===featured?'宿':icon[p.category]||'·'));const t=node('span','pi-text');t.append(node('strong','',p.displayName||(p===featured?p.shortName:p.n)),node('small',estimated(p)?'estimate':'',p===featured?`精选民宿 · ${p.address}`:[CAT[p.category],p.viewing?`可远眺${p.viewing.name}`:p.zone].filter(Boolean).join(' · ')+(estimated(p)?' · 位置待核':'')));b.append(t);b.onclick=()=>selectPlace(p,true);list.append(b);});
+ shown.forEach((p,i)=>{const b=node('button','place-item'+(p===featured?' featured':''));b.style.animationDelay=Math.min(i,14)*16+'ms';b.dataset.name=p.n;b.type='button';b.append(node('span','pi-icon c-'+p.category,p===featured?'宿':icon[p.category]||'·'));const t=node('span','pi-text');t.append(node('strong','',p.displayName||(p===featured?p.shortName:p.n)),node('small',estimated(p)?'estimate':'',p===featured?`精选民宿 · ${p.address}`:[CAT[p.category],p.highlight||(p.viewing?`可远眺${p.viewing.name}`:p.zone)].filter(Boolean).join(' · ')+(estimated(p)?' · 位置待核':'')));b.append(t);b.onclick=()=>selectPlace(p,true);list.append(b);});
  if(found.length>shown.length)list.append(node('p','empty',`另有 ${found.length-shown.length} 个点位未列出，请输入名称、门牌或村名缩小范围。`));
  if(!found.length)list.append(node('p','empty','没有匹配的地点。可以搜寺庙、景点、村名或车站、公厕、停车场，例如“化城寺”“凤凰松”“车站”。'));
 }
 $('#search').oninput=e=>{search=e.target.value.trim();renderList();};$$('[data-category]').forEach(b=>b.onclick=()=>{category=b.dataset.category;$$('[data-category]').forEach(x=>x.classList.toggle('active',x===b));renderList();});renderList();
-function setTab(tab){$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';const a=$('.panel-tabs .active'),bar=$('.panel-tabs');bar.style.setProperty('--tab-x',a.offsetLeft+'px');bar.style.setProperty('--tab-w',a.offsetWidth+'px');}
+function setTab(tab){$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';$('#tab-guide').hidden=tab!=='guide';const a=$('.panel-tabs .active'),bar=$('.panel-tabs');bar.style.setProperty('--tab-x',a.offsetLeft+'px');bar.style.setProperty('--tab-w',a.offsetWidth+'px');}
 function openPanel(tab){if(tab)setTab(tab);closeMobileSheets('directory');$('#panel').classList.remove('closed');resize();requestAnimationFrame(()=>setTab($('.panel-tabs .active').dataset.tab));}
-$$('.panel-tabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));setTab('routes');
+$$('.panel-tabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));setTab('routes');setupGuide(G,$('#guide'));
 $('#panel-close').onclick=()=>{$('#panel').classList.add('closed');resize();};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');if(mobile)$('#panel').classList.add('closed');
 $('#settings-toggle').onclick=()=>{const open=$('#settings').classList.contains('collapsed');if(open)closeMobileSheets('settings');setSettings(open);};if(mobile)setSettings(false);
 $('#featured-cta').onclick=()=>selectPlace(featured,true);

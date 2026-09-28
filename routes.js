@@ -199,8 +199,9 @@ export function setupRoutes(ctx) {
   function card(route) {
     const b = el('button', 'route-card' + (route.featured ? ' featured' : '')); b.type = 'button';
     b.append(el('span', 'rc-by', route.by), el('strong', '', route.name),
-      el('span', 'rc-meta', `${route.duration} · 步行 ${km(route.walkM)} · 爬升 ${route.climb} 米`),
-      el('span', 'rc-path', route.stops.map(s => s.n).filter((n, i, a) => a.indexOf(n) === i).join(' → ')));
+      el('span', 'rc-meta', `${route.duration} · 步行 ${km(route.walkM)} · 爬升 ${route.climb} 米`));
+    if (route.fit) b.append(el('span', 'rc-fit', '适合：' + route.fit));  // who it suits, so a visitor can pick between routes
+    b.append(el('span', 'rc-path', route.stops.map(s => s.n).filter((n, i, a) => a.indexOf(n) === i).join(' → ')));
     b.onclick = () => open(route.id);
     return b;
   }

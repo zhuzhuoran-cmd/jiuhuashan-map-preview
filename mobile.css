@@ -127,7 +127,7 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
  body.route-on:has(.directory:not(.closed)) .help-open{opacity:0;pointer-events:none}
  .directory:not(.closed)~.route-hud,#app:has(.info-card.show) .route-hud{display:none}
  .panel-tabs{margin:0 12px 8px}.panel-tabs button{padding:8px 0;font-size:13px}
- .route-list{padding:2px 10px 10px}.route-detail{padding:0 14px 14px}
+ .route-list{padding:2px 10px 10px}.route-detail{padding:0 14px 14px}.guide{padding:0 10px 12px}
  .route-stats b{font-size:12px}
 }
 @media(max-width:960px) and (orientation:landscape) and (max-height:520px){
