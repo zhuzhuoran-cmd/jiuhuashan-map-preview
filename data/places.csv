@@ -1141,7 +1141,7 @@ luckin coffee瑞幸咖啡(九华山风景区店),food,池州市青阳县九华�
 凤凰松车站,transport,,117.8021287,30.4691328,mapped,osm、360,WGS84,,,https://www.openstreetmap.org/node/5212167017 | https://map.360.cn/?pid=6487d06abd32b979 | https://m.map.360.cn/ | https://www.jiuhuashan.gov.cn/Content/show/773634.html,
 天台索道上站,transport,,117.8161337,30.4648882,platform_listing,osm,WGS84,117.816133,30.464889,https://www.openstreetmap.org/way/609568376 | https://www.jiuhuashan.gov.cn/Content/show/773634.html,
 天台索道站,transport,,117.8045047,30.4675014,multi_source,osm、360,WGS84,117.804504,30.467501,https://map.360.cn/?pid=15bb0db08a7d84a0 | https://www.openstreetmap.org/way/609568574 | https://m.map.360.cn/ | https://www.jiuhuashan.gov.cn/Content/show/773634.html,
-景区检票口,transport,,117.79929989577904,30.485599639314696,legacy_estimate,估计,WGS84,,,,
+景区检票口,transport,,117.7994104,30.4849035,user_confirmed,用户 2026-09-28 在三维地图截图上圈出位置，并提供检票门廊实拍；按圈图与步行通道对应，位置和尺寸为近似,WGS84,,,,
 特来电汽车充电站(华天寺西),transport,池州市青阳县九华镇芙蓉路九华山风景区,117.7917908,30.4828864,platform_listing,360,GCJ-02,117.797123,30.480397,https://map.360.cn/?pid=1696f3688df2938d,
 特来电汽车充电站(诚充九华山山上金环),transport,池州市青阳县九华镇花筑·九华山山忠泽院民宿九华山风景区,117.7951613,30.4838088,platform_listing,360,GCJ-02,117.800487,30.481315,https://map.360.cn/?pid=8f1257eebf394cbe,
 百岁宫缆车上站,transport,池州市青阳县九华山镇二一九省道九华山风景区九华街景区内,117.8037314,30.4815293,multi_source,osm、qunar,WGS84,117.803731,30.48153,https://www.openstreetmap.org/way/930752490 | https://touch.travel.qunar.com/poi/19972082 | https://map.360.cn/?pid=17349644bae76230 | https://www.jiuhuashan.gov.cn/Content/show/773634.html,

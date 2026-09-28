@@ -3,6 +3,7 @@ import {createMapControls} from './map-input.js';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js';
 import {setupRoutes} from './routes.js';
+import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 
 const interactionGuide=setupInteractionGuide();
@@ -46,7 +47,9 @@ const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data
 const {W,D,N}=M, bytes=Uint8Array.from(atob(M.h),c=>c.charCodeAt(0)),dv=new DataView(bytes.buffer),H=new Float32Array(N*N);
 for(let i=0;i<H.length;i++)H[i]=dv.getUint16(i*2,true)/4;
 let EX=1;const hMin=Math.min(...H);
-function hAt(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-1),0,N-1.001),i=u|0,j=v|0,a=u-i,b=v-j;return(H[j*N+i]*(1-a)+H[j*N+i+1]*a)*(1-b)+(H[(j+1)*N+i]*(1-a)+H[(j+1)*N+i+1]*a)*b;}
+function rawHeight(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-1),0,N-1.001),i=u|0,j=v|0,a=u-i,b=v-j;return(H[j*N+i]*(1-a)+H[j*N+i+1]*a)*(1-b)+(H[(j+1)*N+i]*(1-a)+H[(j+1)*N+i+1]*a)*b;}
+const checkpoint=G.places.find(p=>p.model?.kind==='entrance-checkpoint'),checkpointSite=createCheckpointSite(checkpoint,rawHeight);
+function hAt(x,z){const h=rawHeight(x,z);return checkpointSite?checkpointSite.height(x,z,h):h;}
 // No preserveDrawingBuffer: the capture button renders and copies in the same task, and keeping the buffer costs phones a copy per frame.
 // Low-power devices with dense screens skip MSAA: it doubles memory traffic on older mobile GPUs and the pixels are small.
 const renderer=new THREE.WebGLRenderer({antialias:!(lowPower&&devicePixelRatio>=2),alpha:true,powerPreference:'high-performance'});
@@ -118,8 +121,10 @@ const maskPixels=mc.getImageData(0,0,1024,1024).data;const blocked=(x,z)=>{const
 const texture=new THREE.CanvasTexture(cv);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=renderer.capabilities.getMaxAnisotropy();
 const tg=new THREE.PlaneGeometry(W,D,N-1,N-1).rotateX(-Math.PI/2);for(let k=0;k<H.length;k++)tg.attributes.position.setY(k,H[k]);tg.computeVertexNormals();
 const terrain=new THREE.Mesh(tg,mat('#ffffff',{map:texture}));terrain.receiveShadow=true;world.add(terrain);
+if(checkpointSite)world.add(checkpointTerrain(checkpointSite,rawMeshHeight,W,D,mat('#ffffff',{map:texture})));
 // Hand-built sites (居之林) hide the DEM inside a rotated rectangle: origin.xy + unit u.zw; s = (u0,u1,v0,v1), v = (u.y,-u.x).
 const terrainCut={o:new THREE.Vector4(0,0,1,0),s:new THREE.Vector4(1,0,1,0)};
+const checkpointCut=checkpointSite?{o:new THREE.Vector4(...checkpointSite.origin,checkpointSite.fz,-checkpointSite.fx),s:new THREE.Vector4(-18,18,-14,14)}:{o:new THREE.Vector4(0,0,1,0),s:new THREE.Vector4(1,0,1,0)};
 // Inside a hand-built site the hidden DEM does not bound the camera, so visitors can walk the stairs and car park.
 const inTerrainCut=(x,z)=>{const o=terrainCut.o,c=terrainCut.s,dx=x-o.x,dz=z-o.y,u=dx*o.z+dz*o.w,v=dx*o.w-dz*o.z;return u>c.x-3&&u<c.y+3&&v>c.z-3&&v<c.w+3;};
 // Close-range ground grain: the 2048 px overview texture is ~2.7 m/px, so blend a tiled noise detail near the camera.
@@ -128,9 +133,10 @@ const inTerrainCut=(x,z)=>{const o=terrainCut.o,c=terrainCut.s,dx=x-o.x,dz=z-o.y
  const n1=oct(64,11),n2=oct(16,12),n3=oct(8,13);
  for(let j=0;j<256;j++)for(let i=0;i<256;i++){const x=i/256,y=j/256,k=(j*256+i)*4;const fine=.55*n1(x,y)+.45*dr();dimg.data[k]=fine*255;dimg.data[k+1]=(.6*n2(x,y)+.4*n3(x,y))*255;dimg.data[k+2]=128;dimg.data[k+3]=255;}
  dx.putImageData(dimg,0,0);const detailTex=new THREE.CanvasTexture(dc);detailTex.wrapS=detailTex.wrapT=THREE.RepeatWrapping;detailTex.anisotropy=8;
- terrain.material.onBeforeCompile=sh=>{sh.uniforms.detailMap={value:detailTex};sh.uniforms.cutO={value:terrainCut.o};sh.uniforms.cutS={value:terrainCut.s};
+ terrain.material.onBeforeCompile=sh=>{sh.uniforms.detailMap={value:detailTex};sh.uniforms.cutO={value:terrainCut.o};sh.uniforms.cutS={value:terrainCut.s};sh.uniforms.checkpointO={value:checkpointCut.o};sh.uniforms.checkpointS={value:checkpointCut.s};
   sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vDetailPos;').replace('#include <project_vertex>','#include <project_vertex>\nvDetailPos=(modelMatrix*vec4(transformed,1.0)).xyz;');
-  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vDetailPos;uniform sampler2D detailMap;uniform vec4 cutO;uniform vec4 cutS;').replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{vec2 dq=vDetailPos.xz-cutO.xy;float cu=dot(dq,cutO.zw),cv=dot(dq,vec2(cutO.w,-cutO.z));if(cu>cutS.x&&cu<cutS.y&&cv>cutS.z&&cv<cutS.w)discard;}').replace('#include <map_fragment>','#include <map_fragment>\n{float near=smoothstep(1600.0,150.0,length(vDetailPos-cameraPosition));float fine=texture2D(detailMap,vDetailPos.xz/7.0).r;float mid=texture2D(detailMap,vDetailPos.xz/61.0).g;diffuseColor.rgb*=mix(1.0,0.74+0.38*fine+0.22*(mid-0.5),near);}');};
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vDetailPos;uniform sampler2D detailMap;uniform vec4 cutO;uniform vec4 cutS;').replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{vec2 dq=vDetailPos.xz-cutO.xy;float cu=dot(dq,cutO.zw),cv=dot(dq,vec2(cutO.w,-cutO.z));if(cu>cutS.x&&cu<cutS.y&&cv>cutS.z&&cv<cutS.w)discard;}').replace('#include <map_fragment>','#include <map_fragment>\n{float near=smoothstep(1600.0,150.0,length(vDetailPos-cameraPosition));float fine=texture2D(detailMap,vDetailPos.xz/7.0).r;float mid=texture2D(detailMap,vDetailPos.xz/61.0).g;diffuseColor.rgb*=mix(1.0,0.74+0.38*fine+0.22*(mid-0.5),near);}');
+  const prev=sh.fragmentShader;sh.fragmentShader=prev.replace('uniform vec4 cutS;','uniform vec4 cutS;uniform vec4 checkpointO;uniform vec4 checkpointS;').replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{vec2 dq=vDetailPos.xz-checkpointO.xy;float cu=dot(dq,checkpointO.zw),cv=dot(dq,vec2(-checkpointO.w,checkpointO.z));if(cu>checkpointS.x&&cu<checkpointS.y&&cv>checkpointS.z&&cv<checkpointS.w)discard;}');};
  terrain.material.needsUpdate=true;}
 const skirt=new Batch();const sides=[];for(let i=0;i<N;i++)sides.push([i,0]);for(let j=1;j<N;j++)sides.push([N-1,j]);for(let i=N-2;i>=0;i--)sides.push([i,N-1]);for(let j=N-2;j>=0;j--)sides.push([0,j]);
 for(let i=1;i<sides.length;i++){const [a,b]=sides[i-1],[c,d]=sides[i],x=-W/2+a*W/(N-1),z=-D/2+b*D/(N-1),xx=-W/2+c*W/(N-1),zz=-D/2+d*D/(N-1);skirt.quad([x,H[b*N+a],z],[xx,H[d*N+c],zz],[xx,hMin-90,zz],[x,hMin-90,z],'#8f8974');}
@@ -340,7 +346,8 @@ function facePlane(parent,x,y,z,w,h,tex,{back=false,emissive=0}={}){const m=new 
 const SERIF='"Songti SC","STSong","Noto Serif SC","PingFang SC",serif';
 // Draped ground mesh (paving, lawn, paths) that follows the terrain surface as rendered: the terrain mesh is planar per
 // grid triangle, so hAt's bilinear value can sit under it; hMesh matches the triangles exactly.
-function hMesh(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-1),0,N-1.001),i=u|0,j=v|0,a=u-i,b=v-j,h00=H[j*N+i],h10=H[j*N+i+1],h01=H[(j+1)*N+i],h11=H[(j+1)*N+i+1];return a+b<=1?h00+a*(h10-h00)+b*(h01-h00):h11+(1-a)*(h01-h11)+(1-b)*(h10-h11);}
+function rawMeshHeight(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-1),0,N-1.001),i=u|0,j=v|0,a=u-i,b=v-j,h00=H[j*N+i],h10=H[j*N+i+1],h01=H[(j+1)*N+i],h11=H[(j+1)*N+i+1];return a+b<=1?h00+a*(h10-h00)+b*(h01-h00):h11+(1-a)*(h01-h11)+(1-b)*(h10-h11);}
+function hMesh(x,z){const h=rawMeshHeight(x,z);return checkpointSite?checkpointSite.height(x,z,h):h;}
 function drapePolygon(batch,ring,lift,co,maxEdge=3.5,holes=[]){const tris=THREE.ShapeUtils.triangulateShape(ring.map(p=>new THREE.Vector2(p[0],p[1])),holes.map(h=>h.map(p=>new THREE.Vector2(p[0],p[1])))),all=ring.concat(...holes);
  const put=(a,b,c)=>{const e=Math.max(Math.hypot(a[0]-b[0],a[1]-b[1]),Math.hypot(b[0]-c[0],b[1]-c[1]),Math.hypot(c[0]-a[0],c[1]-a[1]));
   if(e>maxEdge){const m=(p,q)=>[(p[0]+q[0])/2,(p[1]+q[1])/2],ab=m(a,b),bc=m(b,c),ca=m(c,a);put(a,ab,ca);put(ab,b,bc);put(ca,bc,c);put(ab,bc,ca);return;}
@@ -911,6 +918,9 @@ for(const f of G.funicular){const pts=[];for(let i=1;i<f.pts.length;i++){const a
  const curve=new THREE.CatmullRomCurve3(pts);for(const s of[-1,1])line(decor,pts.map(p=>[p.x,p.y,p.z+s*.8]),'#dad8c3');const g=new THREE.Group();box(g,0,0,0,7,2.5,2.4,mat('#eee8d8'));box(g,0,.8,0,6.8,1.2,2.45,glass);box(g,0,2.3,0,7,.45,2.6,red);decor.add(g);movers.push({g,curve,phase:.4,kind:'funicular'});
 }
 for(const[parent,b]of lineBatches){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(b.c,3));parent.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({vertexColors:true})));}
+// Simple entrance landmark, placed from the user's circled screenshot and photo.
+if(checkpointSite){const g=buildEntranceCheckpoint(checkpointSite,mat);built.add(g);detailedGroups.push(g);landmarkTop.set(checkpoint.n,checkpointSite.floor+7.5);}
+
 // Hand-built landmarks (北门, 地藏禅寺, 居之林 …) are hundreds of small meshes, and on older phones it is the draw calls
 // that hurt there. Within every group, static meshes that look the same (identical material settings) are merged into
 // one mesh; groups, picking and the distance culling above stay as they were. Nothing changes materials at run time.
@@ -935,7 +945,7 @@ const GROUPS={temple:['temple'],sight:['sight','nature','village'],service:['ser
 // Search covers temples, sights, place names and public facilities only (p.searchable, set in corrections.py); other
 // businesses stay on the map but never come up in the directory or a search. The client's guesthouse is pinned first.
 const featured=places.find(p=>p.featured);
-const qualityText=p=>p.featured?'业主提供实拍 · 位置按门牌估计':({converted_listing:'携程公开坐标 · 已换算',mapped:'OpenStreetMap 地图记录',multi_source:'多个平台坐标相互印证',platform_listing:'公开平台坐标 · 单一来源',unverified_listing:'单一平台收录 · 位置与营业状态待核',derived_area:'由门牌地址范围推算',overture:'公开地图记录 · 待复核',legacy_osm:'旧版地图点 · 待复核',user_confirmed:'用户实地确认'})[p.quality]||'旧版估计位置 · 待核';
+const qualityText=p=>p.featured?'业主提供实拍 · 位置按门牌估计':p.qualityLabel||({converted_listing:'携程公开坐标 · 已换算',mapped:'OpenStreetMap 地图记录',multi_source:'多个平台坐标相互印证',platform_listing:'公开平台坐标 · 单一来源',unverified_listing:'单一平台收录 · 位置与营业状态待核',derived_area:'由门牌地址范围推算',overture:'公开地图记录 · 待复核',legacy_osm:'旧版地图点 · 待复核',user_confirmed:'用户实地确认'})[p.quality]||'旧版估计位置 · 待核';
 const bGrid=new Map();for(const b of G.buildings){const k=Math.floor(b.center[0]/60)+','+Math.floor(b.center[1]/60);if(!bGrid.has(k))bGrid.set(k,[]);bGrid.get(k).push(b);}
 function closestBuilding(p,max=20){let best=null,dist=max;const gx=Math.floor(p.x/60),gz=Math.floor(p.z/60);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(const b of bGrid.get((gx+i)+','+(gz+j))||[]){const d=Math.hypot(p.x-b.center[0],p.z-b.center[1]);if(d<dist){best=b;dist=d;}}return best;}
 const buildingById=new Map(G.buildings.map(b=>[b.id,b]));
@@ -972,6 +982,7 @@ const heading=()=>{const d=controls.target.clone().sub(camera.position);return M
 // The guesthouse is always shown from the road (front). On desktop the target sits 22 m roadside so the lodge shows above
 // the bottom card; phones aim at the lodge itself, since their sheets already shift the map centre clear (syncViewShift).
 function featuredPose(dist=mobile?220:160){const a=15*Math.PI/180,off=mobile?0:22,x=featured.x-Math.sin(a)*off,z=featured.z+Math.cos(a)*off;return pose(x,z,dist,15,57);}
+function placePose(p,near=false){if(p.model?.kind==='entrance-checkpoint'&&checkpointSite)return pose(p.x,p.z,near?(mobile?82:62):(mobile?150:110),checkpointSite.viewAzimuth,near?75:59);return pose(p.x,p.z,p.category==='temple'?(near?210:400):(near?135:300),heading(),near?65:57);}
 function syncSeg(){const nav=$('.viewbar'),a=nav.querySelector('button.active');if(!a){nav.style.setProperty('--ind-o',0);return;}nav.style.setProperty('--ind-x',a.offsetLeft-4+'px');nav.style.setProperty('--ind-w',a.offsetWidth+'px');nav.style.setProperty('--ind-o',1);}
 function clearViews(){$$('[data-view]').forEach(b=>b.classList.remove('active'));syncSeg();}
 function view(name){homePose=null;const poses={town:()=>pose(-1390,50,mobile?1550:1370,38,53),all:()=>pose(-150,200,7800,110,51),top:()=>pose(controls.target.x,controls.target.z,Math.max(900,camera.position.distanceTo(controls.target)),0,1),baisui:()=>{const b=G.buildings.find(b=>b.osmId===541482372);return pose(...b.center,260,60,63);},juzhilin:()=>featuredPose(),tiantai:()=>pose(773,1635,520,130,64)};fly(poses[name]());$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));syncSeg();}
@@ -1034,7 +1045,7 @@ function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('
  const d=more(p.featured?'建模说明':'资料与依据');
  for(const t of[`定位：${qualityText(p)}`,p.modelNote,p.positionNote,p.aliases?.length&&!p.featured&&('其他名称：'+p.aliases.slice(0,4).join('、')),p.category==='village'&&p.addressCount&&`约 ${p.addressCount} 个公开地址含此地名。`,p.quality?.startsWith('legacy')&&'此点沿用原版导览位置，尚未获得独立坐标证据；虚线标注表示待核。'])if(t)d.append(node('p','',t));
  d.append(node('p','coords',`${p.lon?.toFixed(6)??''}°E · ${p.lat?.toFixed(6)??''}°N`),sourceLinks(p));card.append(d);
- const acts=node('div','card-actions'),go=actionBtn('primary',GO_SVG,'靠近查看');go.onclick=()=>{saveHome();fly(p.featured?featuredPose(70):pose(p.x,p.z,p.category==='temple'?210:135,heading(),65));};acts.append(go);
+ const acts=node('div','card-actions'),go=actionBtn('primary',GO_SVG,'靠近查看');go.onclick=()=>{saveHome();fly(p.featured?featuredPose(70):placePose(p,true));};acts.append(go);
  if(p.featured){const call=node('a','btn accent');call.href='tel:'+TEL;call.innerHTML=PHONE_SVG;call.append(node('span','full','致电 '+TEL_TEXT),node('span','short','致电民宿'));call.setAttribute('aria-label','致电居之林民宿 '+TEL_TEXT);acts.append(call);}
  card.append(acts);
  };
@@ -1042,7 +1053,7 @@ function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('
  $$('.place-item').forEach(b=>b.classList.toggle('selected',b.dataset.name===p.n));
  if(!doFly){build();return;}
  const card=$('#card');if(card.classList.contains('show'))conceal(card,440);saveHome();clearViews();
- const to=p.featured?featuredPose():pose(p.x,p.z,p.category==='temple'?400:300,heading(),57);
+ const to=p.featured?featuredPose():placePose(p);
  fly(to,flightMs(to),()=>setTimeout(()=>{if(token!==cardToken||selected!==p)return;card.classList.add('arrive');build();clearTimeout(card._arrive);card._arrive=setTimeout(()=>card.classList.remove('arrive'),1600);},150));
 }
 function selectBuilding(b){cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint',temple=b.style==='temple';
