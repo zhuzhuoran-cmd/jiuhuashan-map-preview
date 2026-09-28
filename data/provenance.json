@@ -4,28 +4,29 @@
   "buildings": 1424,
   "roads": 148,
   "water": 18,
-  "places": 1188,
+  "places": 1177,
   "businesses": 815,
   "osmBuildings": 892,
   "supplementaryBuildings": 532,
   "lodging": 614,
   "food": 154,
-  "mappedPlaces": 47,
+  "mappedPlaces": 46,
   "convertedListings": 440,
-  "legacyPlaces": 5,
+  "legacyPlaces": 0,
   "shops": 47,
-  "temples": 111,
-  "sights": 146,
-  "villages": 37,
-  "services": 62,
+  "temples": 109,
+  "sights": 141,
+  "villages": 35,
+  "services": 60,
   "transport": 16,
   "halls": 85,
   "multiSource": 49,
-  "platformListings": 302,
-  "unverifiedListings": 338,
+  "platformListings": 301,
+  "unverifiedListings": 331,
   "businessesLinkedToBuildings": 413,
   "namedRoadSegments": 6,
-  "userConfirmed": 4
+  "userConfirmed": 9,
+  "searchablePlaces": 328
  },
  "extent": {
   "origin": {
@@ -1382,32 +1383,7 @@
      ]
     }
    ],
-   "keptLegacy": [
-    {
-     "name": "九华山医院",
-     "reason": "九华镇卫生院 is a different facility 508 m away; hospital position unresolved",
-     "droppedMembers": [
-      "op|360map:c3919472a71ec50f",
-      "ts|map360:c3919472a71ec50f"
-     ]
-    },
-    {
-     "name": "闵园尼庵群",
-     "reason": "Qunar point is an area label (low confidence)",
-     "droppedMembers": [
-      "ts|qunar:8666711"
-     ]
-    },
-    {
-     "name": "观音峰",
-     "reason": "identity unresolved (4 candidates 0.57-2.45 km apart); the 360 point is the 天台 观音峰",
-     "droppedMembers": [
-      "op|360map:f60e06e2d9ba9608",
-      "ts|map360:f60e06e2d9ba9608",
-      "ts|qunar:57098730"
-     ]
-    }
-   ],
+   "keptLegacy": [],
    "removed": [
     {
      "name": "佛门戒石",
@@ -1466,6 +1442,40 @@
    "hallWithoutParent": [
     "二天门",
     "旃檀林-方丈法堂"
+   ],
+   "resolvedLegacy": [
+    {
+     "name": "九华山医院",
+     "droppedMembers": [
+      "op|360map:c3919472a71ec50f",
+      "ts|map360:c3919472a71ec50f"
+     ],
+     "previousReason": "九华镇卫生院 is a different facility 508 m away; hospital position unresolved",
+     "reason": "用户 2026-09-28 确认：九华山医院与九华镇卫生院为同一地点，正确位置为地图原“九华镇卫生院”标注处",
+     "mergedInto": "九华镇卫生院",
+     "resolvedAt": "2026-09-28"
+    },
+    {
+     "name": "闵园尼庵群",
+     "droppedMembers": [
+      "ts|qunar:8666711"
+     ],
+     "previousReason": "Qunar point is an area label (low confidence)",
+     "reason": "用户 2026-09-29 圈图核验原编号 14：确认闵园尼庵群的地图代表位置；简介另据公开文献整理",
+     "resolvedAt": "2026-09-29",
+     "locationKind": "area_representative"
+    },
+    {
+     "name": "观音峰",
+     "droppedMembers": [
+      "op|360map:f60e06e2d9ba9608",
+      "ts|map360:f60e06e2d9ba9608",
+      "ts|qunar:57098730"
+     ],
+     "previousReason": "identity unresolved (4 candidates 0.57-2.45 km apart); the 360 point is the 天台 观音峰",
+     "reason": "用户 2026-09-29 核验原编号 15：观音峰的现有地图位置正确",
+     "resolvedAt": "2026-09-29"
+    }
    ]
   },
   "blockedSources": [
@@ -1496,6 +1506,17 @@
    "overture-4fc4d145-0171-4681-b042-e07d96c284ef": "香炉石东侧大广场上的 44 × 18 米识别轮廓：Esri 影像上是广场西北角的一块长方形草坪，用户卫星图上是铺装广场，无建筑（用户 2026-09-27 指出）",
    "overture-bcb25bf7-d08c-47df-bd94-258279c87f12": "同一广场东北边的 56 × 9 米识别长条：Esri 影像上是一排停放的车辆，看得到车顶，没有屋顶"
   },
+  "removedPlaces": {
+   "凤形新村": "用户 2026-09-28 要求删除原编号 5：无需将村落地址范围作为独立地点标注",
+   "白马新村": "用户 2026-09-28 要求删除原编号 6：无需将村落地址范围作为独立地点标注",
+   "古塔": "用户 2026-09-28 要求删除原编号 7 的导览标注",
+   "塔婆": "用户 2026-09-28 要求删除原编号 8 的导览标注",
+   "莲花池": "用户 2026-09-28 要求删除原编号 9 的导览标注",
+   "银杏树": "用户 2026-09-28 要求删除原编号 10 的导览标注",
+   "佛陀": "用户 2026-09-28 要求删除原编号 11 的导览标注",
+   "花台高空栈道": "用户 2026-09-28 要求删除原编号 12，无需显示",
+   "天然睡佛": "原编号 13：用户确认花台群峰与百岁宫的观景关系，但具体山体位置未确定；移除旧估计点，将观景说明放在百岁宫"
+  },
   "addedAreas": {
    "r4-plaza-xianglushi": "Esri World Imagery z18 描绘，并按用户 2026-09-27 标注的卫星图核对（广场边界为近似）",
    "r4-plaza-lawn": "Esri World Imagery z18 描绘，并按用户 2026-09-27 标注的卫星图核对（广场边界为近似）",
@@ -1505,6 +1526,12 @@
    "神光岭广场": "用户确认名称，新增",
    "肉身宝殿北门": "原去哪儿“行愿无尽”点位，按用户确认移到门楼并改名",
    "景区检票口": "用户 2026-09-28 在三维地图截图上圈出位置，并提供检票门廊实拍；按圈图与步行通道对应，位置和尺寸为近似",
+   "九华镇卫生院": "用户 2026-09-28 确认：九华山医院与九华镇卫生院为同一地点，正确位置为地图原“九华镇卫生院”标注处",
+   "甘露寺": "用户 2026-09-28 确认：九华山佛学院就是甘露寺，标注为“甘露寺（九华山佛学院）”",
+   "九华镇闵园社区居民委员会": "用户 2026-09-28 核验原编号 4：九华镇闵园社区居民委员会的名称和现有位置正确",
+   "闵园尼庵群": "用户 2026-09-29 圈图核验原编号 14：确认闵园尼庵群的地图代表位置；简介另据公开文献整理",
+   "观音峰": "用户 2026-09-29 核验原编号 15：观音峰的现有地图位置正确",
+   "百岁宫": "用户 2026-09-28 核验：天然睡佛由花台花岗岩群峰自然构成，从百岁宫向花台远眺可见；群峰的具体位置尚未确定，不标注山体坐标。",
    "九华山居之林民宿(肉身宝殿店)": "业主店铺：按实拍照片手工建模，点位移到模型中部",
    "三角洲车站": "用户标出位置并说明线路（去天台的景交车在此上车），新增；车站旁台阶下到神光岭广场",
    "虎形山车站": "用户确认为景交车始发站、天台返程终点站"
