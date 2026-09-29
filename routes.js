@@ -5,10 +5,12 @@ import {CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {Line2} from 'three/addons/lines/Line2.js';
 import {LineMaterial} from 'three/addons/lines/LineMaterial.js';
 import {LineGeometry} from 'three/addons/lines/LineGeometry.js';
+import {createTraveller} from './traveller.js?v=20260930-traveller';
 
 const MODES = {walk: {name: '步行', color: '#e2862b'}, funicular: {name: '缆车', color: '#7a4fc9'},
   cable: {name: '索道', color: '#7a4fc9'}, bus: {name: '景交车', color: '#2e6fd0'}};
-// Preview pace relative to walking: rides are fast-forwarded so a whole route plays in about half a minute.
+// Preview speed relative to walking: rides are fast-forwarded (the bus covers five times the ground in the same time),
+// so a whole route plays in well under a minute without the rides taking most of it.
 const PACE = {walk: 1, funicular: 1.3, cable: 1.6, bus: 5};
 const WALK_SVG = '<svg viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.8"/><path d="m9 21 2.5-7.5L14 16v5M8 12l2-4.5 3-.5 2.5 3.5L18 11M10.5 7.8 9 13"/></svg>';
 const RIDE_SVG = '<svg viewBox="0 0 24 24"><path d="M3 5.5 21 3M12 4.3V8M6.5 8h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 16.5v-7A1.5 1.5 0 0 1 6.5 8zM5 12.5h14"/></svg>';
@@ -106,7 +108,7 @@ export function setupRoutes(ctx) {
   function placeNames(now) {
     if (!marks.length) return false;
     camera.updateMatrixWorld();
-    const key = camera.matrixWorld.elements.map(e => e.toFixed(1)).join() + camera.projectionMatrix.elements.join() + innerWidth + 'x' + innerHeight + ':' + focusIndex;
+    const key = camera.matrixWorld.elements.map(e => e.toFixed(1)).join() + camera.projectionMatrix.elements.join() + innerWidth + 'x' + innerHeight + ':' + focusIndex + ':' + (traveller.mode ?? '');
     if (key === placedKey && now - placedAt < 500) return false;  // still camera: re-check twice a second (a sheet may have moved)
     if (!rect || now - placedAt >= 500) rect = visibleRect();  // reads the page layout, so at most twice a second
     placedKey = key; placedAt = now;
@@ -114,6 +116,7 @@ export function setupRoutes(ctx) {
     const hits = (r, list) => list.some(o => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
     const inset = (r, d) => [r[0] + d, r[1] + d, r[2] - d, r[3] - d];
     const order = [...marks].sort((a, b) => (b.box === active) - (a.box === active) || a.rank - b.rank);
+    const body = traveller.screenBox(camera, W, H); if (body) taken.push(body);  // dots rise and names step aside for the traveller
     for (const m of order) {
       // sizes are read once the label has been laid out; until then, estimates from the text
       if (!m.bh && m.b.offsetHeight) { m.bw = m.b.offsetWidth; m.bh = m.b.offsetHeight; m.h = m.box.offsetHeight - m.lift; m.nw = m.name.offsetWidth; m.nh = m.name.offsetHeight; }
@@ -131,6 +134,8 @@ export function setupRoutes(ctx) {
       }
       m.dot = dot(lift); if (m.on) taken.push(m.dot);
       if (lift !== m.lift) { m.lift = lift; m.stem.style.height = lift ? `${10 + lift}px` : ''; }
+      // a stem that runs across the traveller fades, so it does not cut through the figure
+      m.box.classList.toggle('veiled', !!body && m.on && hits([x - 4, m.dot[3], x + 4, (1 - v.y) / 2 * H + 6], [body]));
     }
     for (const m of order) {
       let side = 0;
@@ -139,7 +144,8 @@ export function setupRoutes(ctx) {
         const rects = [[r + 3, cy - nh / 2, r + 3 + nw, cy + nh / 2], [l - 3 - nw, cy - nh / 2, l - 3, cy + nh / 2]];
         const inside = q => q[0] >= R.left + 4 && q[2] <= R.right - 4 && q[1] >= R.top + 2 && q[3] <= R.bottom - 2;
         let k = rects.findIndex(q => inside(q) && !hits(q, taken));
-        if (k < 0 && m.box === active) k = Math.max(0, rects.findIndex(inside));
+        // the focused stop always shows its name: clear of the traveller if either side allows it, else wherever it fits
+        if (k < 0 && m.box === active) { k = rects.findIndex(q => inside(q) && !(body && hits(q, [body]))); if (k < 0) k = Math.max(0, rects.findIndex(inside)); }
         if (k >= 0) { side = k ? -1 : 1; taken.push(rects[k]); }
       }
       m.box.classList.toggle('named', side !== 0); m.box.classList.toggle('flip', side === -1);
@@ -147,28 +153,37 @@ export function setupRoutes(ctx) {
     return true;
   }
 
-  // ---- the travelled path: cumulative distance, pace per point, and where each stop falls
+  // ---- the travelled path: cumulative paced distance, the mode of each stretch (that of the point it ends at), where
+  // each stop falls and each leg ends, and where a leg changes between walking and a ride away from any stop
   function buildPath(route, pts3) {
-    const pts = [], cum = [0], weight = [];
+    const pts = [], cum = [], modes = [];
     let s = 0;
     pts3.forEach((q, i) => {
-      if (i) { const d = q.p.distanceTo(pts3[i - 1].p); s += d * PACE[q.mode]; }
-      pts.push(q.p); cum.push(s); weight.push(q.mode);
+      if (i) s += q.p.distanceTo(pts3[i - 1].p) / PACE[q.mode];
+      pts.push(q.p); cum.push(s); modes.push(q.mode);
     });
-    cum.shift();
     const stopAt = route.stops.map((st, i) => {
       if (i === 0) return 0;
       let best = 0, bd = Infinity; const legEnd = pts3.findLastIndex(q => q.leg === i - 1);
       for (let k = Math.max(0, legEnd - 40); k <= legEnd; k++) { const d = Math.hypot(pts[k].x - st.x, pts[k].z - st.z); if (d < bd) { bd = d; best = k; } }
       return cum[best];
     });
-    return {pts, cum, total: s, stopAt};
+    const legEnd = route.legs.map((_, li) => cum[pts3.findLastIndex(q => q.leg === li)]);
+    const switches = [];
+    for (let i = 1; i < pts3.length; i++) if (pts3[i].mode !== pts3[i - 1].mode && pts3[i].leg === pts3[i - 1].leg) switches.push(cum[i - 1]);
+    return {pts, cum, modes, total: s, stopAt, legEnd, switches};
   }
   function at(path, s) {
     const {pts, cum} = path; let lo = 0, hi = cum.length - 1;
     if (s <= 0) return pts[0].clone(); if (s >= cum[hi]) return pts[hi].clone();
     while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= s) lo = mid; else hi = mid; }
     const t = (s - cum[lo]) / Math.max(1e-6, cum[hi] - cum[lo]); return pts[lo].clone().lerp(pts[hi], t);
+  }
+  function modeAt(path, s) {
+    const {cum, modes} = path; let lo = 0, hi = cum.length - 1;
+    if (s >= cum[hi]) return modes[hi];
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= s) lo = mid; else hi = mid; }
+    return modes[hi];
   }
 
   // ---- camera
@@ -219,7 +234,12 @@ export function setupRoutes(ctx) {
     updateHud();
   }
 
-  // ---- preview: the target walks the path; the camera trails behind, facing the direction of travel
+  // ---- preview: the target travels the path and the camera trails behind, facing the direction of travel. A traveller
+  // goes along it: a walker, or the vehicle ridden on that stretch. It stops briefly at each stop and wherever a leg
+  // changes between walking and a ride, so the change can be seen; the route bar says what is happening.
+  const traveller = createTraveller(ctx.scene ?? world.parent ?? world);
+  const VERB = {walk: '步行', bus: '乘景交车', funicular: '乘缆车', cable: '乘索道'}, RIDE = {bus: '景交车', funicular: '缆车', cable: '索道'};
+  const change = (from, to) => to === 'walk' ? `下${from === 'bus' ? '车' : RIDE[from]}步行` : from === 'walk' ? `乘${RIDE[to]}` : `换乘${RIDE[to]}`;
   function startPreview() {
     if (!current || !path) return;
     cancelFinish(); cancelFlight(); closeSheetsForRoute(); controls.stopMotion?.();
@@ -229,16 +249,19 @@ export function setupRoutes(ctx) {
     setFocus(preview.stop); updateHud();
   }
   function stopPreview() { cancelFinish(); if (!preview || preview.paused) return; preview.paused = true; updateHud(); }
-  onFrame((now, dt) => {
-    if (!preview || preview.paused || !path) return;
-    const sec = Math.min(dt, 64) / 1000;
-    if (preview.pause > 0) preview.pause -= sec;
+  function advance(sec) {
+    if (preview.pause > 0) { preview.pause -= sec; if (preview.pause <= 0) preview.switching = false; }
     else {
-      preview.s = Math.min(path.total, preview.s + preview.speed * sec);
-      const next = preview.stop + 1;
-      if (next < path.stopAt.length && preview.s >= path.stopAt[next]) { preview.s = path.stopAt[next]; preview.stop = next; preview.pause = 1.1; setFocus(next); }
+      const from = preview.s, next = preview.stop + 1, stopS = next < path.stopAt.length ? path.stopAt[next] : Infinity;
+      let to = Math.min(path.total, from + preview.speed * sec);
+      const sw = path.switches.find(w => w > from && w <= to && w < stopS);
+      if (sw !== undefined) { to = sw; preview.pause = .8; preview.switching = true; }
+      else if (to >= stopS) { to = stopS; preview.stop = next; preview.pause = 1.1; }
+      preview.s = to;
+      if (preview.stop === next) setFocus(next);
     }
-    const here = at(path, preview.s), ahead = at(path, preview.s + 160 * (preview.speed / 90));
+    const pace = PACE[modeAt(path, preview.s)];
+    const here = at(path, preview.s), ahead = at(path, preview.s + Math.min(160 * (preview.speed / 90), 400 / pace));
     let h = Math.atan2(ahead.x - here.x, -(ahead.z - here.z));
     if (preview.heading === null) preview.heading = h;
     let dh = h - preview.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
@@ -246,15 +269,41 @@ export function setupRoutes(ctx) {
     const y = here.y * world.scale.y, pol = 57 * Math.PI / 180, d = preview.dist;
     const target = new THREE.Vector3(here.x, y, here.z);
     const cam = target.clone().add(new THREE.Vector3(-Math.sin(preview.heading) * d * Math.sin(pol), d * Math.cos(pol), Math.cos(preview.heading) * d * Math.sin(pol)));
-    const k = Math.min(1, sec * 3.2);
+    // faster rides are followed more tightly, so the camera trails the traveller by about the same distance on any of them
+    const k = Math.min(1, sec * 3.2 * pace);
     controls.target.lerp(target, k); camera.position.lerp(cam, k);
     const moving = preview.pause <= 0 && preview.stop + 1 < path.stopAt.length;
-    if (moving !== preview.moving) { preview.moving = moving; updateHud(); }
+    if (moving !== preview.moving) { preview.moving = moving; if (moving) preview.swapped = false; updateHud(); }
     setProgress(preview.s / path.total);
     if (preview.s >= path.total && preview.pause <= 0) {
       preview = null; setFocus(-1); updateHud(true);
       finishTimer = setTimeout(() => { finishTimer = null; overview(); }, 400);
     }
+  }
+  // What the traveller is: from a stop to the end of the leg that arrived there, it already shows how the next leg goes
+  // (boarding at a station, getting off at the end of a ride); elsewhere, the mode of the stretch it is on.
+  function travelMode() {
+    const k = preview.stop, leg = current.legs[k];
+    if (leg && k > 0 && preview.s <= path.legEnd[k - 1]) return leg.parts[0].mode;
+    return modeAt(path, preview.s);
+  }
+  const tv = new THREE.Vector3();
+  function placeTraveller(now, sec) {
+    const mode = travelMode();
+    if (mode !== preview.mode) { preview.fromMode = preview.mode; preview.mode = mode; preview.swapped = !!preview.fromMode; traveller.show(mode, now); updateHud(); }
+    // on foot and on wheels it stands on the ground; the ropeway cabin hangs from the cable (at a station, where the cable starts)
+    const here = at(path, preview.s), ground = hAt(here.x, here.z);
+    tv.set(here.x, (mode === 'cable' ? Math.max(here.y, ground + 20) : ground + 2.6) * world.scale.y, here.z);
+    const d = 10 / PACE[mode], a = at(path, Math.max(0, preview.s - d)), b = at(path, Math.min(path.total, preview.s + d)), flat = Math.hypot(b.x - a.x, b.z - a.z);
+    const yaw = flat > 1 ? Math.atan2(b.x - a.x, -(b.z - a.z)) : null, pitch = flat > 1 ? Math.atan2((b.y - a.y) * world.scale.y, flat) : 0;
+    const pxPerMetre = innerHeight / (2 * Math.max(1, camera.position.distanceTo(tv)) * Math.tan(43 * Math.PI / 360));
+    traveller.update(tv, yaw, pitch, !preview.paused && preview.pause <= 0, now, sec, pxPerMetre);
+  }
+  onFrame((now, dt) => {
+    if (!preview || !path) { if (traveller.visible) traveller.hide(); return; }
+    const sec = Math.min(dt, 64) / 1000;
+    if (!preview.paused) advance(sec);
+    if (preview) placeTraveller(now, sec);  // advance() may have finished it
   });
   controls.addEventListener('gesturestart', stopPreview);
 
@@ -391,9 +440,17 @@ export function setupRoutes(ctx) {
     const n = current.stops.length, cur = preview ? preview.stop : focusIndex, moving = !!preview?.moving;
     const s = current.stops[Math.max(0, cur)], next = current.stops[cur + 1];
     hud.querySelector('b').textContent = current.short;
-    hud.querySelector('small').textContent = preview
-      ? (preview.paused ? '已暂停 · ' : '') + (moving && next ? `正在前往 ${next.n}` : `${cur + 1}/${n} 到达 ${s.n}`)
-      : cur >= 0 ? `${cur + 1}/${n} · ${s.n}` : finished ? '预演完毕 · 可再看一次' : `${n} 站 · ${current.duration} · 点 ▶ 开始预演`;
+    // what is happening, in two parts: a place that may be cut short on a narrow screen, and a note (paused, or a change
+    // between walking and a ride) that is always shown whole
+    const say = (where, note, noteFirst) => {
+      const w = el('span', 'rh-where', where), parts = note ? (noteFirst ? [el('span', 'rh-note', note), w] : [w, el('span', 'rh-note', note)]) : [w];
+      if (preview?.paused) parts.unshift(el('span', 'rh-note', '已暂停 ·\u00a0'));
+      hud.querySelector('small').replaceChildren(...parts);
+    };
+    if (!preview) say(cur >= 0 ? `${cur + 1}/${n} · ${s.n}` : finished ? '预演完毕 · 可再看一次' : `${n} 站 · ${current.duration} · 点 ▶ 开始预演`);
+    else if (moving && next) say(`${VERB[preview.mode] ?? '正在'}前往 ${next.n}`);
+    else if (preview.switching && next) say(`\u00a0· 前往 ${next.n}`, change(preview.fromMode, preview.mode), true);  // no-break spaces: a flex item drops edge spaces
+    else say(cur === 0 ? `从 ${s.n} 出发` : `${cur + 1}/${n} 到达 ${s.n}`, preview.swapped ? `\u00a0· ${change(preview.fromMode, preview.mode)}` : '');
     const pb = hud.querySelector('.rh-play'); pb.innerHTML = playing ? STOP_SVG : PLAY_SVG; pb.setAttribute('aria-label', playLabel);
     hud.hidden = false; hud.classList.toggle('playing', playing); hud.classList.toggle('live', !!preview);
     for (const li of strip.children) {

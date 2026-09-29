@@ -3,7 +3,7 @@ import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js?v=20260929-camera-handoff';
-import {setupRoutes} from './routes.js?v=20260929-route-bar';
+import {setupRoutes} from './routes.js?v=20260930-traveller';
 import {setupGuide,kindLabel} from './guide.js';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
@@ -1121,7 +1121,7 @@ function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),open=!p.cl
  if(mobile){top=document.body.classList.contains('map-chrome-hidden')?0:$('.viewbar').getBoundingClientRect().bottom;if(open){if(p.offsetWidth>w*.6)bottom=p.offsetTop;else right=p.offsetLeft;}}else if(open)right=w-340;
  if(!hud.hidden&&hud.offsetParent)top=Math.max(top,hud.getBoundingClientRect().bottom);
  return{left,top,right,bottom,shiftX:shiftTarget.x,shiftY:shiftTarget.y};}
-routes=setupRoutes({routes:G.routes||[],world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>cameraFlight.cancel(),
+routes=setupRoutes({routes:G.routes||[],scene,world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>cameraFlight.cancel(),
  onPlaybackChange:()=>{if(started)syncViewShift();},
  closeSheetsForRoute:()=>{closeCard(false);if(mobile)$('#panel').classList.add('closed');resize();}});
 $('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>{treesChoice=e.target.checked;applyTrees();};$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;

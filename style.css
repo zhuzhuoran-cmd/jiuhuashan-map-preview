@@ -404,9 +404,11 @@ dialog.closing::backdrop{animation:fade .2s reverse both}
 .maplabel.route-stop.flip .rs-name{left:auto;right:calc(100% + 3px)}
 .maplabel.route-stop.named .rs-name,.maplabel.route-stop.active .rs-name{visibility:visible;opacity:1}
 @media(hover:hover){.maplabel.route-stop:hover{z-index:100000!important}.maplabel.route-stop:hover .rs-name{visibility:visible;opacity:1}}
-.maplabel.route-stop i{position:relative;height:10px;background:linear-gradient(#e2862b,rgba(226,134,43,.25))}
+.maplabel.route-stop i{position:relative;height:10px;animation:none;transition:height .18s ease-out,opacity .18s;background:linear-gradient(#e2862b,rgba(226,134,43,.25))}
 .maplabel.route-stop i::after{position:absolute;left:0;bottom:-1px;margin:0 0 0 -1.8px;background:#e2862b}
 .maplabel.route-stop.active{z-index:100000!important}
+/* the entrance animation is left off route-stop stems: its held end state (opacity 1) would override this fade */
+.maplabel.route-stop.veiled i{opacity:.22}
 .maplabel.route-stop.active button{background:#e2862b;color:#fff;box-shadow:0 0 0 4px rgba(226,134,43,.25),0 8px 20px -6px rgba(90,58,18,.5)}
 .maplabel.route-stop.active .rs-num{background:#fff;color:#e2862b}
 .maplabel.route-stop.active .rs-name{background:#e2862b;border-color:#e2862b;color:#fff}
@@ -430,7 +432,8 @@ body.with-panel .route-hud{left:calc(50% - 170px);width:min(620px,calc(100vw - 4
 .route-hud.playing .rh-dot{animation:pulse-route 1.4s ease-out infinite}
 .rh-text{flex:1;min-width:0;display:grid;line-height:1.3;margin:0 4px}
 .rh-text b{font:600 14px/1.3 var(--serif);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rh-text small{font-size:11.5px;font-weight:500;color:#8a5a1f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rh-text small{display:flex;min-width:0;font-size:11.5px;font-weight:500;color:#8a5a1f;white-space:nowrap}
+.rh-where{min-width:0;overflow:hidden;text-overflow:ellipsis}.rh-note{flex:none;font-weight:700;color:#b0621a}
 .route-hud .icon-btn{flex:none;width:34px;height:34px;border-radius:50%}
 .route-hud .rh-play{background:var(--ink);color:#fff}.route-hud .rh-play svg{fill:currentColor;stroke:none;width:15px;height:15px}
 .rh-list{flex:none;height:34px;padding:0 12px;border-radius:999px;font-size:12px;background:var(--paper-2);border:1px solid var(--line)}
