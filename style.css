@@ -422,16 +422,41 @@ body.route-on .maplabel:not(.route-stop):not(.selected){visibility:hidden}
 .routes-open svg,.panel-open svg{flex:none}
 .routes-open svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .directory.closed~.routes-open{opacity:1;transform:none;pointer-events:auto;transition-delay:.12s}
-.route-hud{position:absolute;left:50%;top:20px;z-index:5;display:flex;align-items:center;gap:6px;padding:6px 6px 6px 14px;border-radius:999px;transform:translateX(-50%);max-width:calc(100vw - 40px);transition:left .42s var(--ease)}
-body.with-panel .route-hud{left:calc(50% - 160px)}
+/* route bar at the top of the map: head row, progress line, and the itinerary strip that follows the preview */
+.route-hud{position:absolute;left:50%;top:20px;z-index:5;display:flex;flex-direction:column;gap:7px;width:min(620px,calc(100vw - 40px));padding:8px 8px 9px;border-radius:18px;transform:translateX(-50%);transition:left .42s var(--ease)}
+body.with-panel .route-hud{left:calc(50% - 170px);width:min(620px,calc(100vw - 400px))}
+.rh-head{display:flex;align-items:center;gap:6px;padding-left:6px}
 .rh-dot{flex:none;width:9px;height:9px;border-radius:50%;background:#e2862b;box-shadow:0 0 0 3px rgba(226,134,43,.22)}
 .route-hud.playing .rh-dot{animation:pulse-route 1.4s ease-out infinite}
-.rh-text{min-width:0;display:grid;line-height:1.3;margin-right:4px}
-.rh-text b{font:600 13px/1.3 var(--serif);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rh-text small{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rh-text{flex:1;min-width:0;display:grid;line-height:1.3;margin:0 4px}
+.rh-text b{font:600 14px/1.3 var(--serif);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rh-text small{font-size:11.5px;font-weight:500;color:#8a5a1f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .route-hud .icon-btn{flex:none;width:34px;height:34px;border-radius:50%}
 .route-hud .rh-play{background:var(--ink);color:#fff}.route-hud .rh-play svg{fill:currentColor;stroke:none;width:15px;height:15px}
 .rh-list{flex:none;height:34px;padding:0 12px;border-radius:999px;font-size:12px;background:var(--paper-2);border:1px solid var(--line)}
+.rh-bar{height:3px;margin:0 6px;border-radius:2px;background:rgba(226,134,43,.18);overflow:hidden}
+.rh-bar i{display:block;height:100%;background:#e2862b;transform-origin:left center;transform:scaleX(0)}
+.rh-stops{position:relative;display:flex;align-items:center;gap:0;margin:0;padding:2px 4px 2px;list-style:none;overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;
+ -webkit-mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 22px),transparent)}
+.rh-stops::-webkit-scrollbar{display:none}
+.rh-stop{flex:none;position:relative}
+.rh-stop button{display:flex;align-items:center;gap:5px;padding:4px 10px 4px 4px;border-radius:999px;background:#fffdf8;border:1px solid rgba(226,134,43,.45);font:600 12px/1.2 var(--sans);color:#5a3a12;white-space:nowrap;transition:background .25s,color .25s,opacity .25s,box-shadow .25s}
+.rh-stop .rs-num{width:19px;height:19px;margin:0;font-size:10.5px;background:#e2862b}
+.rh-stop.start .rs-num{background:var(--accent)}.rh-stop.end .rs-num{background:var(--ink)}
+.rh-stop.done button{opacity:.5;border-color:var(--line)}
+.rh-stop.current button{background:#e2862b;border-color:#e2862b;color:#fff;opacity:1;box-shadow:0 0 0 3px rgba(226,134,43,.22)}
+.rh-stop.current .rs-num{background:#fff;color:#e2862b}
+.rh-stop.next button{border:1.5px solid #e2862b;box-shadow:0 0 0 3px rgba(226,134,43,.12)}
+.rh-stop.next button::after{content:"下一站";margin-left:2px;padding:1px 5px;border-radius:6px;background:rgba(226,134,43,.14);color:#b0621a;font-size:10px;font-weight:600}
+.rh-leg{flex:none;display:flex;align-items:center;gap:3px;margin:0 2px;padding:0 6px;height:22px;font-size:10.5px;color:var(--muted);white-space:nowrap;border-radius:999px;transition:background .25s,color .25s,opacity .25s}
+.rh-leg::before,.rh-leg::after{content:"";width:8px;height:1.5px;background:rgba(226,134,43,.45)}
+.rh-leg .rs-icon{width:16px;height:16px;margin:0;border:0;background:none;color:inherit}
+.rh-leg svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rh-leg.done{opacity:.45}
+.rh-leg.moving{background:rgba(226,134,43,.14);color:#9a5410;font-weight:600}
+.rh-leg.moving .rs-icon{animation:rh-walk .9s ease-in-out infinite alternate}
+@keyframes rh-walk{from{transform:translateX(-2px)}to{transform:translateX(2px)}}
+@media(prefers-reduced-motion:reduce){.rh-leg.moving .rs-icon{animation:none}}
 @keyframes pulse-route{0%{box-shadow:0 0 0 0 rgba(226,134,43,.6)}100%{box-shadow:0 0 0 10px rgba(226,134,43,0)}}
 
 /* loading screen as error screen (no WebGL, lost GPU context) */

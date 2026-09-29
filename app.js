@@ -3,7 +3,7 @@ import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js?v=20260929-camera-handoff';
-import {setupRoutes} from './routes.js?v=20260929-camera-handoff';
+import {setupRoutes} from './routes.js?v=20260929-route-bar';
 import {setupGuide,kindLabel} from './guide.js';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
@@ -1115,10 +1115,11 @@ $$('.panel-tabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));set
 $('#panel-close').onclick=()=>{$('#panel').classList.add('closed');resize();};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');if(mobile)$('#panel').classList.add('closed');
 $('#settings-toggle').onclick=()=>{const open=$('#settings').classList.contains('collapsed');if(open)closeMobileSheets('settings');setSettings(open);};if(mobile)setSettings(false);
 $('#featured-cta').onclick=()=>selectPlace(featured,true);
-// The part of the map left uncovered, for framing a route: below the top bar and above a phone's sheet (or left of a side
-// sheet), or beside the open desktop panel. The view shift centres the map in the same area.
-function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),open=!p.classList.contains('closed');let top=0,bottom=h,left=0,right=w;
+// The part of the map left uncovered, for framing a route: below the top bar or the route bar and above a phone's sheet (or
+// left of a side sheet), or beside the open desktop panel. The view shift centres the map in the same area.
+function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),open=!p.classList.contains('closed'),hud=$('#route-hud');let top=0,bottom=h,left=0,right=w;
  if(mobile){top=document.body.classList.contains('map-chrome-hidden')?0:$('.viewbar').getBoundingClientRect().bottom;if(open){if(p.offsetWidth>w*.6)bottom=p.offsetTop;else right=p.offsetLeft;}}else if(open)right=w-340;
+ if(!hud.hidden&&hud.offsetParent)top=Math.max(top,hud.getBoundingClientRect().bottom);
  return{left,top,right,bottom,shiftX:shiftTarget.x,shiftY:shiftTarget.y};}
 routes=setupRoutes({routes:G.routes||[],world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>cameraFlight.cancel(),
  onPlaybackChange:()=>{if(started)syncViewShift();},
@@ -1163,7 +1164,7 @@ const FOV=43;let shift={x:0,y:0},shiftTarget={x:0,y:0};
 function applyViewShift(){const w=innerWidth,h=innerHeight,{x,y}=shift,fw=w+2*Math.abs(x),fh=h+2*Math.abs(y);camera.aspect=fw/fh;camera.fov=Math.atan(Math.tan(FOV*Math.PI/360)*fh/h)*360/Math.PI;
  if(fw>w+1||fh>h+1)camera.setViewOffset(fw,fh,x>0?2*x:0,y>0?2*y:0,w,h);else camera.clearViewOffset();camera.updateProjectionMatrix();}
 function syncViewShift(){const w=innerWidth,h=innerHeight,card=$('#card'),panel=$('#panel'),directoryOpen=!panel.classList.contains('closed');let x=0,y=0;
- const otherInteraction=directoryOpen||card.classList.contains('show')||!!cameraFlight.destination?.onDone||!!routes?.previewing||$('#data-dialog').open||$('#viewer').classList.contains('show');
+ const otherInteraction=directoryOpen||card.classList.contains('show')||!!cameraFlight.destination?.onDone||!!routes?.active||$('#data-dialog').open||$('#viewer').classList.contains('show');
  const hideChrome=otherInteraction||!$('#settings').classList.contains('collapsed');
  if(document.body.classList.contains('map-chrome-hidden')!==hideChrome){
   document.body.classList.toggle('map-chrome-hidden',hideChrome);

@@ -23,7 +23,7 @@ function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.
 export function setupRoutes(ctx) {
   const {routes, world, camera, controls, hAt, fly, pose, cancelFlight, openPanel, closeSheetsForRoute, onFrame, isMobile, visibleRect} = ctx;
   const list = document.querySelector('#route-list'), detail = document.querySelector('#route-detail');
-  const hud = document.querySelector('#route-hud');
+  const hud = document.querySelector('#route-hud'), strip = hud.querySelector('.rh-stops'), bar = hud.querySelector('.rh-bar i');
   const group = new THREE.Group(); group.renderOrder = 5; world.add(group);
   const materials = [];
   let current = null, labels = [], marks = [], path = null, preview = null, focusIndex = -1;
@@ -248,6 +248,9 @@ export function setupRoutes(ctx) {
     const cam = target.clone().add(new THREE.Vector3(-Math.sin(preview.heading) * d * Math.sin(pol), d * Math.cos(pol), Math.cos(preview.heading) * d * Math.sin(pol)));
     const k = Math.min(1, sec * 3.2);
     controls.target.lerp(target, k); camera.position.lerp(cam, k);
+    const moving = preview.pause <= 0 && preview.stop + 1 < path.stopAt.length;
+    if (moving !== preview.moving) { preview.moving = moving; updateHud(); }
+    setProgress(preview.s / path.total);
     if (preview.s >= path.total && preview.pause <= 0) {
       preview = null; setFocus(-1); updateHud(true);
       finishTimer = setTimeout(() => { finishTimer = null; overview(); }, 400);
@@ -347,27 +350,69 @@ export function setupRoutes(ctx) {
     const route = routes.find(r => r.id === id); if (!route) return;
     stopPreview(); preview = null; current = route; focusIndex = -1;
     openPanel('routes');
-    list.hidden = true; detail.hidden = false; renderDetail(route); draw(route);
+    list.hidden = true; detail.hidden = false; renderDetail(route); draw(route); renderStrip(route); stripKey = '';
+    updateHud();  // the route bar first, so the framing leaves room below it
     const to = fitPose(route); fly(to, 1600);
-    updateHud();
   }
   function close() {
-    stopPreview(); cancelFlight(); preview = null; current = null; clearDrawing();
+    stopPreview(); cancelFlight(); preview = null; current = null; clearDrawing(); strip.replaceChildren();
     detail.hidden = true; list.hidden = false; updateHud();
   }
 
-  // ---- compact bar while the route is on the map and the panel is out of the way (or a preview is playing)
+  // ---- route bar at the top of the map while the route is shown: name, where the preview is (or which stop is picked),
+  // a progress line, and the whole itinerary as a strip of stops with the way between them. During a preview the strip
+  // follows along: stops passed are dimmed, the current one is filled, the next one is tagged 下一站, the leg being
+  // travelled glows, and the strip scrolls to keep them in view. Tapping a stop flies there, as on the map.
+  function legShort(leg) {
+    const ride = leg.parts.find(p => p.mode !== 'walk');
+    return `${ride ? MODES[ride.mode].name : '步行'} ${leg.minutes} 分钟`;
+  }
+  function renderStrip(route) {
+    strip.replaceChildren();
+    route.stops.forEach((s, i) => {
+      const li = el('li', 'rh-stop' + (i === 0 ? ' start' : i === route.stops.length - 1 ? ' end' : '')); li.dataset.i = i;
+      const b = el('button'); b.type = 'button'; b.onclick = () => focusStop(i);
+      b.append(el('span', 'rs-num', String(i + 1)), el('span', 'rh-name', s.n)); li.append(b); strip.append(li);
+      const leg = route.legs[i];
+      if (leg) {
+        const lg = el('li', 'rh-leg'); lg.dataset.i = i;
+        const icon = el('span', 'rs-icon'); icon.innerHTML = legIcon(leg); lg.append(icon, el('span', '', legShort(leg))); strip.append(lg);
+      }
+    });
+  }
+  let stripKey = '';
+  function setProgress(f) { bar.style.transform = `scaleX(${Math.max(0, Math.min(1, f)).toFixed(4)})`; }
   function updateHud(finished) {
     ctx.onPlaybackChange?.();
     const playing = !!preview && !preview.paused, playLabel = playing ? '暂停预演' : preview ? '继续预演' : '路线预演';
     const play = detail.querySelector('.route-play');
     if (play) { play.innerHTML = playing ? STOP_SVG : PLAY_SVG; play.append(playLabel); }
     if (!current) { hud.hidden = true; return; }
-    const s = current.stops[Math.max(0, focusIndex)];
+    const n = current.stops.length, cur = preview ? preview.stop : focusIndex, moving = !!preview?.moving;
+    const s = current.stops[Math.max(0, cur)], next = current.stops[cur + 1];
     hud.querySelector('b').textContent = current.short;
-    hud.querySelector('small').textContent = preview || focusIndex >= 0 ? `${Math.max(0, focusIndex) + 1} / ${current.stops.length} · ${s.n}` : finished ? '预演完毕 · 可再看一次' : `${current.stops.length} 站 · ${current.duration}`;
+    hud.querySelector('small').textContent = preview
+      ? (preview.paused ? '已暂停 · ' : '') + (moving && next ? `正在前往 ${next.n}` : `${cur + 1}/${n} 到达 ${s.n}`)
+      : cur >= 0 ? `${cur + 1}/${n} · ${s.n}` : finished ? '预演完毕 · 可再看一次' : `${n} 站 · ${current.duration} · 点 ▶ 开始预演`;
     const pb = hud.querySelector('.rh-play'); pb.innerHTML = playing ? STOP_SVG : PLAY_SVG; pb.setAttribute('aria-label', playLabel);
-    hud.hidden = false; hud.classList.toggle('playing', playing);
+    hud.hidden = false; hud.classList.toggle('playing', playing); hud.classList.toggle('live', !!preview);
+    for (const li of strip.children) {
+      const i = +li.dataset.i, stop = li.classList.contains('rh-stop');
+      li.classList.toggle('done', !!finished || i < cur);
+      if (stop) { li.classList.toggle('current', i === cur); li.classList.toggle('next', !!preview && i === cur + 1); }
+      else li.classList.toggle('moving', moving && i === cur);
+    }
+    setProgress(preview ? preview.s / path.total : finished ? 1 : cur >= 0 && path ? path.stopAt[cur] / path.total : 0);
+    // scroll so the current stop starts at the left edge, or further if that is what it takes to show the next stop whole
+    const key = `${current.id}:${cur}:${!!preview}`;
+    if (key !== stripKey && hud.offsetParent) {  // not while a sheet or card hides the bar
+      stripKey = key;
+      const here = strip.querySelector(`.rh-stop[data-i="${Math.max(0, cur)}"]`), ahead = preview && strip.querySelector(`.rh-stop[data-i="${cur + 1}"]`);
+      if (here) {
+        const left = Math.max(here.offsetLeft - 8, ahead ? ahead.offsetLeft + ahead.offsetWidth - strip.clientWidth + 18 : 0);
+        strip.scrollTo?.({left: Math.max(0, left), behavior: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+      }
+    }
   }
   hud.querySelector('.rh-play').onclick = () => preview && !preview.paused ? stopPreview() : startPreview();
   hud.querySelector('.rh-list').onclick = () => { stopPreview(); openPanel('routes'); };
