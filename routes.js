@@ -26,7 +26,7 @@ export function setupRoutes(ctx) {
   const hud = document.querySelector('#route-hud');
   const group = new THREE.Group(); group.renderOrder = 5; world.add(group);
   const materials = [];
-  let current = null, labels = [], path = null, preview = null, focusIndex = -1;
+  let current = null, labels = [], marks = [], path = null, preview = null, focusIndex = -1;
 
   // ---- geometry: parts sampled every ~6 m, draped a little above the terrain (cable lines hang above it)
   function sample(part) {
@@ -71,24 +71,77 @@ export function setupRoutes(ctx) {
       line(pts, color, 5, {order: 6, dashed: ride});
       for (const p of pts) pts3.push({p, mode: part.mode, leg: li});
     }));
-    // a place visited twice (out and back) gets one label carrying both numbers, e.g. “2·12”
+    // a place visited twice (out and back) gets one label carrying both numbers, e.g. “2·12”. Each stop is a small numbered
+    // dot; its name sits beside the dot and is shown only where it fits (see placeNames).
     const byPlace = new Map();
     route.stops.forEach((s, i) => { if (!byPlace.has(s.place)) byPlace.set(s.place, {s, idx: []}); byPlace.get(s.place).idx.push(i); });
+    const last = route.stops.length - 1;
     for (const {s, idx} of byPlace.values()) {
-      const last = route.stops.length - 1;
       const box = el('div', 'maplabel route-stop' + (idx.includes(0) ? ' start' : idx.includes(last) ? ' end' : ''));
-      const b = el('button'); b.type = 'button';
-      b.append(el('span', 'rs-num' + (idx.length > 1 ? ' multi' : ''), idx.map(i => i + 1).join('·')), s.n); b.onclick = () => focusStop(idx[0]);
-      box.append(b, el('i'));
+      const b = el('button'), name = el('span', 'rs-name', s.n); b.type = 'button'; b.title = s.n;
+      b.append(el('span', 'rs-num' + (idx.length > 1 ? ' multi' : ''), idx.map(i => i + 1).join('·')), name); b.onclick = () => focusStop(idx[0]);
+      const stem = el('i'); box.append(b, stem);
       const label = new CSS2DObject(box); label.center.set(.5, 1); label.position.set(s.x, hAt(s.x, s.z) + 9, s.z);
       group.add(label); for (const i of idx) labels[i] = box;
+      marks.push({box, b, name, stem, label, lift: 0, rank: idx.includes(0) || idx.includes(last) ? 1 : 2 + idx[0] / 100});
     }
+    placedKey = '';
     path = buildPath(route, pts3);
     document.body.classList.add('route-on');
   }
   function clearDrawing() {
     for (const o of [...group.children]) { group.remove(o); if (o.isLine2) { o.geometry.dispose(); o.material.dispose(); } if (o.isCSS2DObject) o.element.remove(); }
-    materials.length = 0; labels = []; path = null; document.body.classList.remove('route-on');
+    materials.length = 0; labels = []; marks = []; path = null; document.body.classList.remove('route-on');
+  }
+
+  // ---- stop dots and names. Stops close together would hide each other's numbers, so a dot that would cover one already
+  // placed stands higher on a longer stem. Names go to the right of their dot, or else to the left, only where they cover no
+  // other dot or name and stay inside the uncovered part of the screen. The focused stop goes first and always shows its
+  // name, then the start and end, then the rest in order. The itinerary lists every name, a tap on a dot shows it, and so
+  // does hovering on a desktop.
+  let placedKey = '', placedAt = 0, rect = null;
+  const v = new THREE.Vector3();
+  function placeNames(now) {
+    if (!marks.length) return;
+    camera.updateMatrixWorld();
+    const key = camera.matrixWorld.elements.map(e => e.toFixed(1)).join() + innerWidth + 'x' + innerHeight + ':' + focusIndex;
+    if (key === placedKey && now - placedAt < 500) return;  // still camera: re-check twice a second (a sheet may have moved)
+    if (!rect || now - placedAt >= 500) rect = visibleRect();  // reads the page layout, so at most twice a second
+    placedKey = key; placedAt = now;
+    const R = rect, W = innerWidth, H = innerHeight, taken = [], active = labels[focusIndex];
+    const hits = (r, list) => list.some(o => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
+    const inset = (r, d) => [r[0] + d, r[1] + d, r[2] - d, r[3] - d];
+    const order = [...marks].sort((a, b) => (b.box === active) - (a.box === active) || a.rank - b.rank);
+    for (const m of order) {
+      // sizes are read once the label has been laid out; until then, estimates from the text
+      if (!m.bh && m.b.offsetHeight) { m.bw = m.b.offsetWidth; m.bh = m.b.offsetHeight; m.h = m.box.offsetHeight - m.lift; m.nw = m.name.offsetWidth; m.nh = m.name.offsetHeight; }
+      m.label.getWorldPosition(v).project(camera);
+      m.on = v.z > -1 && v.z < 1;
+      const bw = m.bw || 26, bh = m.bh || 26, x = (v.x + 1) / 2 * W, y = (1 - v.y) / 2 * H - (m.h || 36) + bh / 2;
+      const dot = up => [x - bw / 2, y - up - bh / 2, x + bw / 2, y - up + bh / 2];
+      // dots may touch; one that would cover much of another steps up just clear of it, at most about two dots high and
+      // never out of the uncovered area
+      let lift = 0;
+      if (m.on) {
+        const d0 = dot(0), below = taken.filter(o => hits(inset(d0, 6), [o]));
+        const up = below.length ? Math.max(...below.map(o => d0[3] - o[1] + 2)) : 0;
+        if (up && up <= 2 * bh + 6 && dot(up)[1] >= R.top && !hits(inset(dot(up), 4), taken)) lift = Math.round(up);
+      }
+      m.dot = dot(lift); if (m.on) taken.push(m.dot);
+      if (lift !== m.lift) { m.lift = lift; m.stem.style.height = lift ? `${10 + lift}px` : ''; }
+    }
+    for (const m of order) {
+      let side = 0;
+      if (m.on) {
+        const nw = m.nw || [...m.name.textContent].length * 12 + 20, nh = m.nh || 22, [l, t, r, b] = m.dot, cy = (t + b) / 2;
+        const rects = [[r + 3, cy - nh / 2, r + 3 + nw, cy + nh / 2], [l - 3 - nw, cy - nh / 2, l - 3, cy + nh / 2]];
+        const inside = q => q[0] >= R.left + 4 && q[2] <= R.right - 4 && q[1] >= R.top + 2 && q[3] <= R.bottom - 2;
+        let k = rects.findIndex(q => inside(q) && !hits(q, taken));
+        if (k < 0 && m.box === active) k = Math.max(0, rects.findIndex(inside));
+        if (k >= 0) { side = k ? -1 : 1; taken.push(rects[k]); }
+      }
+      m.box.classList.toggle('named', side !== 0); m.box.classList.toggle('flip', side === -1);
+    }
   }
 
   // ---- the travelled path: cumulative distance, pace per point, and where each stop falls
@@ -120,25 +173,25 @@ export function setupRoutes(ctx) {
   // desktop panel): turn so the route's long axis runs across the screen, then refine centre and distance by projecting it.
   function fitPose(route) {
     const pts = [];
-    route.legs.forEach(l => l.parts.forEach(p => p.pts.forEach(([x, z], i) => { if (i % 3 === 0 || i === p.pts.length - 1) pts.push([x, z, 8, 0]); })));
-    // stop labels stand about 30 m above their point and are centred on it: keep half their width (≈12 px a character) clear
-    const seen = new Map(); route.stops.forEach((s, i) => seen.set(s.place, (seen.get(s.place) || '') + (seen.has(s.place) ? '·' : '') + (i + 1)));
-    route.stops.forEach(s => pts.push([s.x, s.z, 34, ([...s.n].length * 12.5 + seen.get(s.place).length * 7 + 34) / 2]));
+    route.legs.forEach(l => l.parts.forEach(p => p.pts.forEach(([x, z], i) => { if (i % 3 === 0 || i === p.pts.length - 1) pts.push([x, z, 8, 0, 0]); })));
+    // each stop's numbered dot stands about 38 px tall and 30 px wide over its point; names are only shown where they fit
+    // (placeNames), so they need no room of their own and the route can fill the view
+    route.stops.forEach(s => pts.push([s.x, s.z, 9, 15, 38]));
     const n = pts.length, mx = pts.reduce((a, p) => a + p[0], 0) / n, mz = pts.reduce((a, p) => a + p[1], 0) / n;
     let sxx = 0, szz = 0, sxz = 0; for (const [x, z] of pts) { sxx += (x - mx) ** 2; szz += (z - mz) ** 2; sxz += (x - mx) * (z - mz); }
     let az = Math.atan2(2 * sxz, sxx - szz) / 2 * 180 / Math.PI;  // long axis → screen horizontal
     while (az - 25 > 90) az -= 180; while (25 - az > 90) az += 180;  // of the two ways round, keep closest to the usual view
-    // labels are up to ~120 px wide, so keep more room at the sides than at the top and bottom
-    const pol = 52, R = visibleRect(), W = innerWidth, H = innerHeight, mx0 = 12, my0 = 34;
+    // a little more room at the sides, where the names of the outermost stops go
+    const pol = 52, R = visibleRect(), W = innerWidth, H = innerHeight, mx0 = 22, my0 = 16;
     const vis = {w: R.right - R.left, h: R.bottom - R.top}, aimX = (R.left + R.right) / 2 + R.shiftX, aimY = (R.top + R.bottom) / 2 + R.shiftY;
     const cam = new THREE.PerspectiveCamera(43, W / H, 1, 60000), v = new THREE.Vector3(), right = new THREE.Vector3(), fwd = new THREE.Vector3();
     let cx = mx, cz = mz, dist = 1600;
     for (let k = 0; k < 30; k++) {
       const P = pose(cx, cz, dist, az, pol); cam.position.copy(P.pos); cam.lookAt(P.target); cam.updateMatrixWorld();
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-      for (const [x, z, up, hw] of pts) {
+      for (const [x, z, up, hw, top] of pts) {
         v.set(x, (hAt(x, z) + up) * world.scale.y, z).project(cam);
-        const px = (v.x + 1) / 2 * W, py = (1 - v.y) / 2 * H; x0 = Math.min(x0, px - hw); x1 = Math.max(x1, px + hw); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+        const px = (v.x + 1) / 2 * W, py = (1 - v.y) / 2 * H; x0 = Math.min(x0, px - hw); x1 = Math.max(x1, px + hw); y0 = Math.min(y0, py - top); y1 = Math.max(y1, py);
       }
       const need = Math.max((x1 - x0) / Math.max(80, vis.w - 2 * mx0), (y1 - y0) / Math.max(60, vis.h - 2 * my0));
       const mpp = 2 * dist * Math.tan(43 * Math.PI / 360) / H, ox = (x0 + x1) / 2 - aimX, oy = (y0 + y1) / 2 - aimY;
@@ -172,6 +225,7 @@ export function setupRoutes(ctx) {
     setFocus(0); updateHud();
   }
   function stopPreview() { if (!preview) return; preview = null; updateHud(); }
+  onFrame(now => { if (current) placeNames(now); });
   onFrame((now, dt) => {
     if (!preview || !path) return;
     const sec = Math.min(dt, 64) / 1000;
