@@ -1112,7 +1112,9 @@ $('#search').oninput=e=>{search=e.target.value.trim();renderList();};$$('[data-c
 function setTab(tab){$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';$('#tab-guide').hidden=tab!=='guide';const a=$('.panel-tabs .active'),bar=$('.panel-tabs');bar.style.setProperty('--tab-x',a.offsetLeft+'px');bar.style.setProperty('--tab-w',a.offsetWidth+'px');}
 function openPanel(tab){routes?.stopPreview();cameraFlight.cancel();if(tab)setTab(tab);closeMobileSheets('directory');$('#panel').classList.remove('closed');resize();requestAnimationFrame(()=>setTab($('.panel-tabs .active').dataset.tab));}
 $$('.panel-tabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));setTab('routes');setupGuide(G,$('#guide'));
-$('#panel-close').onclick=()=>{$('#panel').classList.add('closed');resize();};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');if(mobile)$('#panel').classList.add('closed');
+// Closing the panel on a route's page leaves the route: its bar goes and the map returns to the opening view. A paused
+// preview is kept, to be resumed from the route bar.
+$('#panel-close').onclick=()=>{const leave=routes?.active&&!routes.canResume&&!$('#tab-routes').hidden;$('#panel').classList.add('closed');resize();if(leave){routes.close();view('town');}};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');if(mobile)$('#panel').classList.add('closed');
 $('#settings-toggle').onclick=()=>{const open=$('#settings').classList.contains('collapsed');if(open)closeMobileSheets('settings');setSettings(open);};if(mobile)setSettings(false);
 $('#featured-cta').onclick=()=>selectPlace(featured,true);
 // The part of the map left uncovered, for framing a route: below the top bar or the route bar and above a phone's sheet (or
