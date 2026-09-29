@@ -9,9 +9,11 @@ import {createTraveller} from './traveller.js?v=20260930-traveller';
 
 const MODES = {walk: {name: '步行', color: '#e2862b'}, funicular: {name: '缆车', color: '#7a4fc9'},
   cable: {name: '索道', color: '#7a4fc9'}, bus: {name: '景交车', color: '#2e6fd0'}};
-// Preview speed relative to walking: rides are fast-forwarded (the bus covers five times the ground in the same time),
-// so a whole route plays in well under a minute without the rides taking most of it.
-const PACE = {walk: 1, funicular: 1.3, cable: 1.6, bus: 5};
+// Preview speed relative to walking: rides are fast-forwarded (the bus covers 2.5 times the ground in the same time),
+// so a whole route plays in under a minute without the rides taking most of it. On a ride the camera also draws back
+// (ZOOM times its walking distance) and follows more calmly, so a long winding bus ride does not rush past close up.
+const PACE = {walk: 1, funicular: 1.3, cable: 1.6, bus: 2.5};
+const ZOOM = {walk: 1, funicular: 1.3, cable: 1.6, bus: 2.4};
 const WALK_SVG = '<svg viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.8"/><path d="m9 21 2.5-7.5L14 16v5M8 12l2-4.5 3-.5 2.5 3.5L18 11M10.5 7.8 9 13"/></svg>';
 const RIDE_SVG = '<svg viewBox="0 0 24 24"><path d="M3 5.5 21 3M12 4.3V8M6.5 8h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 16.5v-7A1.5 1.5 0 0 1 6.5 8zM5 12.5h14"/></svg>';
 const BUS_SVG = '<svg viewBox="0 0 24 24"><rect x="4.5" y="3.5" width="15" height="15" rx="2.5"/><path d="M4.5 11h15M8 18.5V21M16 18.5V21"/><circle cx="8.5" cy="15" r=".9"/><circle cx="15.5" cy="15" r=".9"/></svg>';
@@ -243,8 +245,8 @@ export function setupRoutes(ctx) {
   function startPreview() {
     if (!current || !path) return;
     cancelFinish(); cancelFlight(); closeSheetsForRoute(); controls.stopMotion?.();
-    const secs = Math.min(42, Math.max(22, path.total / 90));
-    preview ??= {s: 0, speed: path.total / secs, pause: 1.2, stop: 0, heading: null, dist: current.id === 'tiantai-classic' ? 430 : 250};
+    const secs = Math.min(50, Math.max(22, path.total / 90)), dist = current.id === 'tiantai-classic' ? 430 : 250;
+    preview ??= {s: 0, speed: path.total / secs, pause: 1.2, stop: 0, heading: null, dist, camDist: dist};
     preview.paused = false;
     setFocus(preview.stop); updateHud();
   }
@@ -260,24 +262,28 @@ export function setupRoutes(ctx) {
       preview.s = to;
       if (preview.stop === next) setFocus(next);
     }
-    const pace = PACE[modeAt(path, preview.s)];
-    const here = at(path, preview.s), ahead = at(path, preview.s + Math.min(160 * (preview.speed / 90), 400 / pace));
+    const mode = modeAt(path, preview.s), pace = PACE[mode];
+    // the camera draws back for a ride (from the station where it is boarded) and comes back in once it is over
+    preview.camDist += (preview.dist * ZOOM[travelMode()] - preview.camDist) * Math.min(1, sec * .7);
+    const zoom = preview.camDist / preview.dist;
+    const here = at(path, preview.s), ahead = at(path, preview.s + Math.min(160 * (preview.speed / 90), 400 * zoom / pace));
     let h = Math.atan2(ahead.x - here.x, -(ahead.z - here.z));
     if (preview.heading === null) preview.heading = h;
     let dh = h - preview.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-    preview.heading += dh * Math.min(1, sec * 1.6);
-    const y = here.y * world.scale.y, pol = 57 * Math.PI / 180, d = preview.dist;
+    preview.heading += dh * Math.min(1, sec * 1.6 / zoom);  // turns more slowly when drawn back, so bends do not swing the view
+    const y = here.y * world.scale.y, pol = 57 * Math.PI / 180, d = preview.camDist;
     const target = new THREE.Vector3(here.x, y, here.z);
     const cam = target.clone().add(new THREE.Vector3(-Math.sin(preview.heading) * d * Math.sin(pol), d * Math.cos(pol), Math.cos(preview.heading) * d * Math.sin(pol)));
-    // faster rides are followed more tightly, so the camera trails the traveller by about the same distance on any of them
-    const k = Math.min(1, sec * 3.2 * pace);
+    // faster rides are followed more tightly, so the traveller keeps about the same place on screen on any of them
+    const k = Math.min(1, sec * 3.2 * pace / zoom);
     controls.target.lerp(target, k); camera.position.lerp(cam, k);
     const moving = preview.pause <= 0 && preview.stop + 1 < path.stopAt.length;
     if (moving !== preview.moving) { preview.moving = moving; if (moving) preview.swapped = false; updateHud(); }
     setProgress(preview.s / path.total);
     if (preview.s >= path.total && preview.pause <= 0) {
       preview = null; setFocus(-1); updateHud(true);
-      finishTimer = setTimeout(() => { finishTimer = null; overview(); }, 400);
+      // back to the route's page: the itinerary opens again and the camera shows the whole route
+      finishTimer = setTimeout(() => { finishTimer = null; openPanel('routes'); detail.scrollTop = 0; overview(); }, 400);
     }
   }
   // What the traveller is: from a stop to the end of the leg that arrived there, it already shows how the next leg goes
