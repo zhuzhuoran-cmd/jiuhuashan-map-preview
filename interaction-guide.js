@@ -55,5 +55,5 @@ export function setupInteractionGuide() {
         !event.target.closest('#gesture-tour,#help-open')) stop();
   }, {passive: true});
   document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
-  return {start};
+  return {start, stop};
 }

@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-import {createMapControls} from './map-input.js';
+import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
+import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
-import {setupInteractionGuide} from './interaction-guide.js';
-import {setupRoutes} from './routes.js';
+import {setupInteractionGuide} from './interaction-guide.js?v=20260929-camera-handoff';
+import {setupRoutes} from './routes.js?v=20260929-camera-handoff';
 import {setupGuide,kindLabel} from './guide.js';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
+import {createSpatialBatch,AdaptiveResolution} from './render-performance.js?v=20260929-mobile-perf';
 
 const interactionGuide=setupInteractionGuide();
 
@@ -13,12 +15,9 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const compactViewport=()=>matchMedia('(max-width:820px), (max-width:960px) and (orientation:landscape) and (max-height:520px)').matches;let mobile=compactViewport();
 // Phones and touch-only tablets get the lighter scene (fewer tree facets, no shadows, capped resolution) whatever their layout.
 const lowPower=mobile||matchMedia('(pointer:coarse)').matches&&!matchMedia('(any-pointer:fine)').matches;
-// Picture-quality tiers, chosen automatically. Phones and touch-only tablets start at 标准, desktops at 极致. A short
-// benchmark after loading picks the tier (under 30 fps → 流畅 at once; clear headroom → try one tier up and keep it if it
-// holds ~45 fps), the result is remembered on the device for the next visit, and a device that later falls under ~25 fps
-// steps down. MSAA and the number of trees are fixed when the page opens; everything else switches live. On phones that
-// struggle the forest is most of the frame (measured 2026-09-28), so 流畅 and below turn it off (the owner's choice);
-// the visitor can switch it back on under 图层 (applyTrees).
+// Phones start at 标准, desktops at 极致 (or the device's remembered tier). Sustained
+// slow frames first lower the independent DPR budget; only then step down a tier.
+// Existing forest/shape presets stay intact, including the visitor's layer choice.
 const TIERS=[
  {name:'流畅',dpr:1,pbr:false,blur:false,hiShapes:false,forest:0,bamboo:false,trunkDist:0,detailDist:450,landmarkDist:2600,labelCap:16,shadows:false},
  {name:'标准',dpr:1.5,pbr:false,blur:false,hiShapes:false,forest:1,bamboo:true,trunkDist:1400,detailDist:900,landmarkDist:4000,labelCap:null,shadows:false},
@@ -56,12 +55,19 @@ function hAt(x,z){const h=rawHeight(x,z);return checkpointSite?checkpointSite.he
 const renderer=new THREE.WebGLRenderer({antialias:!(lowPower&&devicePixelRatio>=2),alpha:true,powerPreference:'high-performance'});
 // Tiers below 高清 skip the frosted-glass blur behind panels (re-blurred every frame over the moving map): html.lite.
 document.documentElement.classList.toggle('lite',!TIERS[tier].blur);
-const dprCap=()=>Math.min(devicePixelRatio,emergency?.8:TIERS[tier].dpr),shadows=()=>TIERS[tier].shadows&&!mobile&&!lowPower;
+const resolutionCeiling=()=>Math.min(devicePixelRatio,emergency?.8:TIERS[tier].dpr),resolution=new AdaptiveResolution(resolutionCeiling());
+let idleResolution=false,resolutionChangedAt=0;
+const dprCap=()=>resolution.pixelRatio(idleResolution),shadows=()=>TIERS[tier].shadows&&!mobile&&!lowPower;
+function syncResolution(idle=false,now=performance.now()){idleResolution=idle;const ratio=dprCap();if(Math.abs(renderer.getPixelRatio()-ratio)<.01)return;renderer.setPixelRatio(ratio);resolutionChangedAt=now;}
 renderer.setPixelRatio(dprCap());renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
 renderer.shadowMap.enabled=shadows();renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('#stage').appendChild(renderer.domElement);
 // Phones can drop the GPU context under memory pressure (other tabs, backgrounding); say so instead of leaving a frozen frame.
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fatal('设备图形内存不足，三维画面已停止。关闭其他页面后点“重新加载”。');});
 const labels=new CSS2DRenderer();labels.domElement.className='labels';$('#stage').appendChild(labels.domElement);
+// A read-only CSS render list, not a second parent. Real labels keep their scene /
+// route parents and world matrices; CSS2D no longer walks all the geometry again.
+const labelRoot=new THREE.Group();labelRoot.matrixWorldAutoUpdate=false;
+const attachedLabels=[];let labelsDirty=true,labelPasses=0,labelSelections=0;
 const scene=new THREE.Scene();scene.fog=new THREE.FogExp2('#ceded9',.000072);
 const world=new THREE.Group(),built=new THREE.Group(),forest=new THREE.Group(),trailGroup=new THREE.Group(),decor=new THREE.Group();scene.add(world);world.add(built,forest,trailGroup,decor);
 const camera=new THREE.PerspectiveCamera(43,1,.7,32000);const controls=createMapControls(camera,$('#stage'),onMapTap);
@@ -901,7 +907,7 @@ let treesChoice=null;
 function applyTrees(){const T=TIERS[tier],on=treesChoice??(T.forest>0&&!emergency);forest.visible=on;$('#layer-trees').checked=on;if(on)setForestDensity(T.forest||1);}
 function setShapes(hi){const S=shapes(hi);for(const t of forestTiles){if(t.trunk)t.trunk.geometry=S.trunk;if(t.crown)t.crown.geometry=S.leaf;if(t.cone)t.cone.geometry=S.pine;if(t.bam)t.bam.geometry=S.bamboo;}if(lanternMesh)lanternMesh.geometry=S.lantern;}
 // Everything a tier controls that can change while the map is open (MSAA and the tree count are fixed at start-up).
-function applyTier(){const T=TIERS[tier];renderer.setPixelRatio(dprCap());
+function applyTier(){const T=TIERS[tier];resolution.setCeiling(resolutionCeiling(),true);syncResolution(false);labelsDirty=true;
  scene.traverse(o=>{if(o.isMesh&&o.material&&!Array.isArray(o.material))o.material=twinOf(o.material,T.pbr);});
  document.documentElement.classList.toggle('lite',!T.blur);setShapes(T.hiShapes);applyTrees();
  for(const t of forestTiles)if(t.bam)t.bam.visible=T.bamboo&&!emergency;labelCap=emergency?12:T.labelCap;
@@ -939,8 +945,19 @@ if(checkpointSite){const g=buildEntranceCheckpoint(checkpointSite,mat);built.add
  for(const g of built.children)if(g.isGroup)mergeGroup(g);}
 for(const g of detailedGroups)pickables.push(g);
 
+// Exact geometry at both distances. The near representation shares vertex buffers
+// and culls 400 m tiles; the far representation keeps the original low draw count.
+const spatialBatches=[];
+if(renderer.capabilities.isWebGL2||renderer.extensions.has('OES_element_index_uint')){
+ const targets=[terrain,...built.children.filter(o=>o.isMesh&&!o.isInstancedMesh&&!o.material.transparent&&!o.children.length&&o.geometry.attributes.position.count>3000)];
+ for(const mesh of targets){const batch=createSpatialBatch(mesh);if(batch)spatialBatches.push(batch);}
+}
+// Mesh transforms are static; moving cable cars and the featured pin are groups.
+// Parent/world matrices still update, including the height-exaggeration control.
+world.traverse(o=>{if(o.isMesh){o.updateMatrix();o.matrixAutoUpdate=false;}});
+
 const places=G.places.map(p=>({...p}));const byName=new Map(places.map(p=>[p.n,p]));const business=p=>['hotel','food','shop'].includes(p.category);const estimated=p=>p.quality?.startsWith('legacy')||['overture','unverified_listing','derived_area'].includes(p.quality);
-let selected=null,category='all',search='',tween=null,frame=0,visibleLabelCount=0,labelCap=null;
+let selected=null,category='all',search='',frame=0,visibleLabelCount=0,labelCap=null;
 const icon={temple:'寺',hotel:'宿',food:'食',shop:'购',transport:'行',nature:'山',sight:'景',village:'村',service:'公'};
 const GROUPS={temple:['temple'],sight:['sight','nature','village'],service:['service','transport']};
 // Search covers temples, sights, place names and public facilities only (p.searchable, set in corrections.py); other
@@ -967,17 +984,18 @@ const extraLabels=[];
 for(const p of places)for(const h of p.halls||[]){const q={n:h.n,x:h.x,z:h.z,p:5,parent:p,limit:300,hall:true};makeLabel(q,'small hall',h.n,()=>selectPlace(p,false));q.top=hAt(h.x,h.z)+9;q.label.position.set(h.x,q.top+4,h.z);extraLabels.push(q);}
 {const best=new Map();for(const r of G.roads){if(!r.name||r.pts.length<2)continue;let len=0;for(let i=1;i<r.pts.length;i++)len+=Math.hypot(r.pts[i][0]-r.pts[i-1][0],r.pts[i][1]-r.pts[i-1][1]);if(!best.has(r.name)||best.get(r.name).len<len)best.set(r.name,{r,len});}
  for(const[name,{r}]of best){const m=r.pts[Math.floor(r.pts.length/2)];const q={n:name,x:m[0],z:m[1],p:4,limit:2200,road:true};makeLabel(q,'road',name.replace(/\s*\(.*\)$/,''),null);q.top=hAt(m[0],m[1]);q.label.position.set(m[0],q.top+3,m[1]);extraLabels.push(q);}}
+const labelPlaces=places.concat(extraLabels).filter(p=>p.label);
 
 
 function pose(x,z,dist=900,az=145,pol=57){const target=new THREE.Vector3(x,hAt(x,z)*EX,z);const a=az*Math.PI/180,p=pol*Math.PI/180;return{target,pos:target.clone().add(new THREE.Vector3(-Math.sin(a)*dist*Math.sin(p),dist*Math.cos(p),Math.cos(a)*dist*Math.sin(p)))};}
-// onDone runs when the camera arrives (or at once if the user grabs the camera mid-flight).
-let routes=null;const frameHooks=[]; // routes: set up after the panel; frameHooks run each frame before the controls
-function fly(to,ms=1200,onDone=null){routes?.stopPreview();if(reduce||!ms){camera.position.copy(to.pos);controls.target.copy(to.target);controls.update();tween=null;onDone?.();}else tween={p0:camera.position.clone(),t0:controls.target.clone(),p1:to.pos,t1:to.target,start:performance.now(),ms,onDone};}
+let routes=null,started=false;const frameHooks=[]; // routes: set up after the panel; frameHooks run each frame before the controls
+const cameraFlight=createCameraFlight(camera,controls,{reducedMotion:reduce});
+function fly(to,ms=1200,onDone=null,arrivalDelay=0){routes?.stopPreview();cameraFlight.move(to,ms,onDone,arrivalDelay);if(started)syncViewShift();}
 // Longer hops take a little longer so the move never feels rushed.
 const flightMs=to=>clamp(900+camera.position.distanceTo(to.pos)*.35,1100,2400);
 // The view from before a card first moved the camera (the destination if a flight is under way); closing the card eases back to it.
 let homePose=null;
-function saveHome(){homePose??={pos:(tween?tween.p1:camera.position).clone(),target:(tween?tween.t1:controls.target).clone(),view:$('.viewbar button.active')?.dataset.view};}
+function saveHome(){const to=cameraFlight.destination;homePose??={pos:(to?to.pos:camera.position).clone(),target:(to?to.target:controls.target).clone(),view:$('.viewbar button.active')?.dataset.view};}
 function flyHome(){const h=homePose;homePose=null;if(!h)return;fly(h,Math.round(flightMs(h)*1.2));$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===h.view));syncSeg();}
 const heading=()=>{const d=controls.target.clone().sub(camera.position);return Math.atan2(d.x,-d.z)*180/Math.PI;};
 // The guesthouse is always shown from the road (front). On desktop the target sits 22 m roadside so the lodge shows above
@@ -987,7 +1005,7 @@ function placePose(p,near=false){if(p.model?.kind==='entrance-checkpoint'&&check
 function syncSeg(){const nav=$('.viewbar'),a=nav.querySelector('button.active');if(!a){nav.style.setProperty('--ind-o',0);return;}nav.style.setProperty('--ind-x',a.offsetLeft-4+'px');nav.style.setProperty('--ind-w',a.offsetWidth+'px');nav.style.setProperty('--ind-o',1);}
 function clearViews(){$$('[data-view]').forEach(b=>b.classList.remove('active'));syncSeg();}
 function view(name){homePose=null;const poses={town:()=>pose(-1390,50,mobile?1550:1370,38,53),all:()=>pose(-150,200,7800,110,51),top:()=>pose(controls.target.x,controls.target.z,Math.max(900,camera.position.distanceTo(controls.target)),0,1),baisui:()=>{const b=G.buildings.find(b=>b.osmId===541482372);return pose(...b.center,260,60,63);},juzhilin:()=>featuredPose(),tiantai:()=>pose(773,1635,520,130,64)};fly(poses[name]());$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));syncSeg();}
-$$('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));controls.addEventListener('start',()=>{const t=tween;tween=null;clearViews();t?.onDone?.();});
+$$('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));controls.addEventListener('gesturestart',()=>{cameraFlight.cancel();clearViews();syncViewShift();});
 fly(pose(-1390,50,mobile?1550:1370,38,53),0);
 $('#north').onclick=()=>fly(pose(controls.target.x,controls.target.z,camera.position.distanceTo(controls.target),0,controls.getPolarAngle()*180/Math.PI));
 $('#zoom-in').onclick=()=>fly(pose(controls.target.x,controls.target.z,Math.max(40,camera.position.distanceTo(controls.target)*.65),heading(),controls.getPolarAngle()*180/Math.PI),450);
@@ -996,9 +1014,9 @@ function sourceLinks(p){const links=node('div','links');for(const s of p.sources
 function deselect(){if(selected?.el)selected.el.classList.remove('selected');selected=null;}
 let cardToken=0; // bumps whenever the card is closed or replaced, cancelling a card still waiting for its camera flight
 // back=false when another mobile sheet takes the card's place: the camera stays and the saved view is dropped.
-function closeCard(back=true){cardToken++;deselect();conceal($('#card'));syncViewShift();if(back)flyHome();else homePose=null;}
-function setSettings(open){$('#settings').classList.toggle('collapsed',!open);$('#settings-toggle').setAttribute('aria-expanded',open);}
-function closeDialog(){const d=$('#data-dialog');if(!d.open)return;d.classList.add('closing');setTimeout(()=>{d.classList.remove('closing');d.close();},190);}
+function closeCard(back=true){cardToken++;cameraFlight.cancel();deselect();conceal($('#card'));syncViewShift();if(back)flyHome();else homePose=null;}
+function setSettings(open){$('#settings').classList.toggle('collapsed',!open);$('#settings-toggle').setAttribute('aria-expanded',open);if(started)syncViewShift();}
+function closeDialog(){const d=$('#data-dialog');if(!d.open)return;d.classList.add('closing');setTimeout(()=>{d.classList.remove('closing');d.close();syncViewShift();},190);}
 function closeMobileSheets(keep){
  if(!mobile)return;
  if(keep!=='directory'){$('#panel').classList.add('closed');$('#search').blur();syncViewShift();}
@@ -1023,8 +1041,8 @@ function openViewer(srcs,start,title='居之林民宿实拍'){const v=$('#viewer
  const at=()=>Math.round(strip.scrollLeft/Math.max(1,strip.clientWidth)),upd=()=>{count.textContent=`${at()+1} / ${srcs.length}`;};strip.onscroll=upd;
  const go=d=>strip.scrollTo({left:clamp(at()+d,0,srcs.length-1)*strip.clientWidth,behavior:reduce?'auto':'smooth'});v._go=go;
  v.querySelector('.viewer-prev').onclick=e=>{e.stopPropagation();go(-1);};v.querySelector('.viewer-next').onclick=e=>{e.stopPropagation();go(1);};v.onclick=closeViewer;
- reveal(v);strip.scrollLeft=start*strip.clientWidth;upd();v.querySelector('.viewer-close').focus({preventScroll:true});}
-function closeViewer(){conceal($('#viewer'),260);}
+ reveal(v);strip.scrollLeft=start*strip.clientWidth;upd();syncViewShift();v.querySelector('.viewer-close').focus({preventScroll:true});}
+function closeViewer(){conceal($('#viewer'),260);syncViewShift();}
 const CAT={temple:'寺院',sight:'景点',nature:'山水景观',village:'村落地名',service:'公共服务',transport:'交通',hotel:'住宿',food:'餐饮',shop:'购物'};
 const TEL='17356648281',TEL_TEXT='173 5664 8281';
 function more(title){const d=node('details','more');d.append(node('summary','',title));return d;}
@@ -1041,6 +1059,7 @@ function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('
  for(const [i,photo]of photos.entries()){const a=node('a');a.href=srcs[i];a.setAttribute('aria-label',photo.alt+'，点开放大');a.onclick=e=>{e.preventDefault();openViewer(srcs,i,p.viewing.name);};const img=node('img');img.src=srcs[i];img.width=photo.width;img.height=photo.height;img.alt=photo.alt;img.loading='lazy';a.append(img);hero.append(a);}}
  const card=cardBase(p.displayName||(p.featured?p.shortName:p.n),p.featured?'精选民宿 · 实拍建模':CAT[p.category]||'地点',{cat:p.category,sub:p.address||p.zone||'',hero,featured:!!p.featured});
  const chips=node('div','chips');if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(hAt(p.x,p.z))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));card.append(chips);if(p.featured&&G.routes?.some(r=>r.id==='juzhilin-halfday')){const r=G.routes.find(r=>r.id==='juzhilin-halfday'),t=node('button','route-teaser');t.type='button';t.innerHTML=ROUTE_SVG;const tx=node('span','');tx.append(node('b','','从这里出发 · '+r.short),node('small','',`${r.duration} · 肉身宝殿 → 化城寺 → 缆车上百岁宫 · 看路线`));t.append(tx);t.onclick=()=>routes?.open(r.id);card.append(t);}
+ if(p.featured&&routes?.canResume){const resume=card.querySelector('.route-teaser')||node('button','route-teaser');resume.type='button';resume.innerHTML=ROUTE_SVG;const text=node('span','');text.append(node('b','','继续路线预演'),node('small','',routes.active.short+' · 从刚才暂停的位置继续'));resume.append(text);resume.onclick=()=>routes.startPreview();if(!resume.parentNode)card.append(resume);}
  if(p.featured)card.append(node('p','lead','三层退台的山地民宿：屋顶露台远眺九华诸峰，二层木平台与罗汉松小院，门前停车场带充电桩，挡墙上方是挂满灯笼的大松树。'));
  // Why go first, then the story with how each paragraph should be read; where a story exists the building notes move into 资料与依据.
  if(p.highlight){const h=node('p','highlight');h.append(node('b','','看点'),p.highlight);card.append(h);}
@@ -1059,12 +1078,12 @@ function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('
  };
  if(mobile){$('#panel').classList.add('closed');syncViewShift();}
  $$('.place-item').forEach(b=>b.classList.toggle('selected',b.dataset.name===p.n));
- if(!doFly){build();return;}
+ if(!doFly){routes?.stopPreview();cameraFlight.cancel();build();return;}
  const card=$('#card');if(card.classList.contains('show'))conceal(card,440);saveHome();clearViews();
  const to=p.featured?featuredPose():placePose(p);
- fly(to,flightMs(to),()=>setTimeout(()=>{if(token!==cardToken||selected!==p)return;card.classList.add('arrive');build();clearTimeout(card._arrive);card._arrive=setTimeout(()=>card.classList.remove('arrive'),1600);},150));
+ fly(to,flightMs(to),()=>{if(token!==cardToken||selected!==p)return;card.classList.add('arrive');build();clearTimeout(card._arrive);card._arrive=setTimeout(()=>card.classList.remove('arrive'),1600);},150);
 }
-function selectBuilding(b){cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint',temple=b.style==='temple';
+function selectBuilding(b){routes?.stopPreview();cameraFlight.cancel();cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint',temple=b.style==='temple';
  const card=cardBase(temple?(b.name||b.precinct||b.templeGuess||'寺院建筑'):'民居建筑',temple?'寺院建筑':'街区建筑',{cat:temple?'temple':'village',sub:b.precinct?`${b.precinct} 寺院范围内`:''});
  const chips=node('div','chips');chips.append(node('span','',`占地约 ${Math.round(b.area)} m²`),node('span','',`${b.levels||'-'} 层`),node('span','',`墙高 ${b.wallHeight.toFixed(1)} m`));card.append(chips);
  const d=more('外观与数据依据');d.append(node('p','',ml?'平面轮廓来自影像识别，可能包含识别误差。':'平面形状与朝向来自地图记录。'));
@@ -1073,7 +1092,7 @@ function selectBuilding(b){cardToken++;deselect();const ml=b.positionQuality==='
  const acts=node('div','card-actions'),btn=actionBtn('ghost',ORBIT_SVG,'环看这栋建筑');btn.onclick=()=>{saveHome();fly(pose(...b.center,Math.max(70,b.width*3),heading()+70,66));clearViews();};acts.append(btn);card.append(acts);}
 const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 function onMapTap(e){
- if(!built.visible)return;
+ if(cameraFlight.active||!built.visible)return;
  ndc.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);ray.setFromCamera(ndc,camera);const hit=ray.intersectObjects(pickables,true)[0];
  if(!hit){if(mobile)closeCard();return;}
  let o=hit.object;while(o&&!o.userData.landmark)o=o.parent;
@@ -1091,7 +1110,7 @@ function renderList(){const list=$('#place-list');list.replaceChildren();const f
 }
 $('#search').oninput=e=>{search=e.target.value.trim();renderList();};$$('[data-category]').forEach(b=>b.onclick=()=>{category=b.dataset.category;$$('[data-category]').forEach(x=>x.classList.toggle('active',x===b));renderList();});renderList();
 function setTab(tab){$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';$('#tab-guide').hidden=tab!=='guide';const a=$('.panel-tabs .active'),bar=$('.panel-tabs');bar.style.setProperty('--tab-x',a.offsetLeft+'px');bar.style.setProperty('--tab-w',a.offsetWidth+'px');}
-function openPanel(tab){if(tab)setTab(tab);closeMobileSheets('directory');$('#panel').classList.remove('closed');resize();requestAnimationFrame(()=>setTab($('.panel-tabs .active').dataset.tab));}
+function openPanel(tab){routes?.stopPreview();cameraFlight.cancel();if(tab)setTab(tab);closeMobileSheets('directory');$('#panel').classList.remove('closed');resize();requestAnimationFrame(()=>setTab($('.panel-tabs .active').dataset.tab));}
 $$('.panel-tabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));setTab('routes');setupGuide(G,$('#guide'));
 $('#panel-close').onclick=()=>{$('#panel').classList.add('closed');resize();};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');if(mobile)$('#panel').classList.add('closed');
 $('#settings-toggle').onclick=()=>{const open=$('#settings').classList.contains('collapsed');if(open)closeMobileSheets('settings');setSettings(open);};if(mobile)setSettings(false);
@@ -1099,10 +1118,11 @@ $('#featured-cta').onclick=()=>selectPlace(featured,true);
 // The part of the map left uncovered, for framing a route: below the top bar and above a phone's sheet (or left of a side
 // sheet), or beside the open desktop panel. The view shift centres the map in the same area.
 function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),open=!p.classList.contains('closed');let top=0,bottom=h,left=0,right=w;
- if(mobile){top=$('.viewbar').getBoundingClientRect().bottom;if(open){if(p.offsetWidth>w*.6)bottom=p.offsetTop;else right=p.offsetLeft;}}else if(open)right=w-340;
+ if(mobile){top=document.body.classList.contains('map-chrome-hidden')?0:$('.viewbar').getBoundingClientRect().bottom;if(open){if(p.offsetWidth>w*.6)bottom=p.offsetTop;else right=p.offsetLeft;}}else if(open)right=w-340;
  return{left,top,right,bottom,shiftX:shiftTarget.x,shiftY:shiftTarget.y};}
-routes=setupRoutes({routes:G.routes||[],world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>{tween=null;},
- closeSheetsForRoute:()=>{if(!mobile)return;closeCard(false);$('#panel').classList.add('closed');resize();}});
+routes=setupRoutes({routes:G.routes||[],world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>cameraFlight.cancel(),
+ onPlaybackChange:()=>{if(started)syncViewShift();},
+ closeSheetsForRoute:()=>{closeCard(false);if(mobile)$('#panel').classList.add('closed');resize();}});
 $('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>{treesChoice=e.target.checked;applyTrees();};$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
 $('#height').oninput=e=>{const old=EX;EX=+e.target.value;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=EX;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`视觉增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(EX-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(EX-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*EX;for(const q of extraLabels)q.label.position.y=(q.top+4)*EX;};
 const S=G.stats,ST=S.buildingStyles||{};
@@ -1117,9 +1137,9 @@ const dataText=`<p>本次更新：2026 年 9 月 28 日。覆盖约 ${(W/1000).t
 <h3>景区交通（官网 ${G.transit?.retrieved||''}）</h3>${(G.transit?.routes||[]).map(r=>`<p><b>${r.name}</b>　${r.hours}<br><small>${r.stops.join(' → ')}${r.note?'。'+r.note:''}</small></p>`).join('')}<p>${(G.transit?.cableways||[]).map(c=>`${c.name} ${c.hours}`).join('　·　')}<br><small>旅游咨询 ${G.transit?.hotlines?.['旅游咨询投诉']||''} · 紧急救援 ${G.transit?.hotlines?.['紧急救援']||''} · 尚无公开坐标的站点：${(G.transit?.unlocatedStops||[]).join('、')}</small></p>
 <h3>坐标与数据质量</h3><p>去哪儿、360 地图等平台的 GCJ-02 坐标均用 coordtransform 换算为 WGS84，原始坐标保存在数据中；每个数据集都经过独立抽检。维基数据等开放数据中约 1 km 偏移的寺庙点（百度坐标误标为 WGS84）未用于定位。地点定位依据可在简介卡的“资料与依据”中查看。</p>
 <h3>资料与许可</h3><p><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors / ODbL</a> · <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">Overture Maps：建筑 ODbL；地点 CDLA-Permissive 2.0</a> · <a href="https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model" target="_blank" rel="noopener">Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018，由 ESA 在 Copernicus 计划下提供</a> · <a href="https://www.jiuhuashan.gov.cn/file_cz/54/202506/202506269aaa0b14711f440284eefd14e047a66e.pdf" target="_blank" rel="noopener">九华山官方地质公园规划</a> · <a href="https://doi.org/10.5194/essd-16-5357-2024" target="_blank" rel="noopener">3D-GloBFP 建筑高度（Che 等 2024，CC BY 4.0）</a>，仅用于同片区内楼层高低排序 · 去哪儿、360 地图公开页面（逐条链接见地点卡片）</p><p>补充建筑由 Qian Shi 等的东亚建筑数据经 Overture 提供，原始数据为 <a href="https://doi.org/10.5281/zenodo.8174931" target="_blank" rel="noopener">CC BY 4.0</a>；本项目做了裁剪、去重与屋顶重建。官方照片与公开照片仅用于归纳外观规律，未作为贴图。</p>`;
-$('#data-content').innerHTML=dataText;$('#credit-data').onclick=$('#credit-mobile').onclick=()=>{closeMobileSheets('data');$('#data-dialog').showModal();};$('#data-close').onclick=closeDialog;$('#data-dialog').onclick=e=>{if(e.target===$('#data-dialog'))closeDialog();};
+$('#data-content').innerHTML=dataText;$('#credit-data').onclick=$('#credit-mobile').onclick=()=>{closeMobileSheets('data');$('#data-dialog').showModal();syncViewShift();};$('#data-close').onclick=closeDialog;$('#data-dialog').onclick=e=>{if(e.target===$('#data-dialog'))closeDialog();};$('#data-dialog').addEventListener('close',()=>{if(started)syncViewShift();});
 $('#capture').onclick=()=>{
- renderer.render(scene,camera);labels.render(scene,camera);
+ camera.updateMatrixWorld();updateLabels();renderer.render(scene,camera);routes?.updateLabels(performance.now());renderLabelLayer();
  const out=document.createElement('canvas');out.width=renderer.domElement.width;out.height=renderer.domElement.height;
  const c=out.getContext('2d');c.fillStyle='#dce5df';c.fillRect(0,0,out.width,out.height);c.drawImage(renderer.domElement,0,0);
  const ratio=out.width/innerWidth;c.scale(ratio,ratio);
@@ -1142,71 +1162,103 @@ $('#capture').onclick=()=>{
 const FOV=43;let shift={x:0,y:0},shiftTarget={x:0,y:0};
 function applyViewShift(){const w=innerWidth,h=innerHeight,{x,y}=shift,fw=w+2*Math.abs(x),fh=h+2*Math.abs(y);camera.aspect=fw/fh;camera.fov=Math.atan(Math.tan(FOV*Math.PI/360)*fh/h)*360/Math.PI;
  if(fw>w+1||fh>h+1)camera.setViewOffset(fw,fh,x>0?2*x:0,y>0?2*y:0,w,h);else camera.clearViewOffset();camera.updateProjectionMatrix();}
-function syncViewShift(){const w=innerWidth,h=innerHeight,card=$('#card'),panel=$('#panel');let x=0,y=0;
+function syncViewShift(){const w=innerWidth,h=innerHeight,card=$('#card'),panel=$('#panel'),directoryOpen=!panel.classList.contains('closed');let x=0,y=0;
+ const otherInteraction=directoryOpen||card.classList.contains('show')||!!cameraFlight.destination?.onDone||!!routes?.previewing||$('#data-dialog').open||$('#viewer').classList.contains('show');
+ const hideChrome=otherInteraction||!$('#settings').classList.contains('collapsed');
+ if(document.body.classList.contains('map-chrome-hidden')!==hideChrome){
+  document.body.classList.toggle('map-chrome-hidden',hideChrome);
+  if(hideChrome)interactionGuide.stop();
+ }
+ // The active layer panel keeps its own toggle available so it can be closed.
+ for(const el of $$('.map-chrome')){const hide=el.id==='settings'?otherInteraction:hideChrome;if(el.inert===hide)continue;
+  el.classList.toggle('is-hidden',hide);el.inert=hide;el.setAttribute('aria-hidden',String(hide));if(el.matches('button'))el.disabled=hide;for(const button of el.querySelectorAll('button'))button.disabled=hide;}
  if(!mobile)x=panel.classList.contains('closed')?0:160;
  else{const sheet=card.classList.contains('show')?card:panel.classList.contains('closed')?null:panel;
-  if(sheet&&sheet.offsetWidth>w*.6){const bar=$('.viewbar');y=Math.max(0,h/2-(bar.offsetTop+bar.offsetHeight+sheet.offsetTop)/2);}
+  if(sheet&&sheet.offsetWidth>w*.6){const bar=$('.viewbar'),top=hideChrome?0:bar.offsetTop+bar.offsetHeight;y=Math.max(0,h/2-(top+sheet.offsetTop)/2);}
   else if(sheet)x=Math.max(0,(w-sheet.offsetLeft)/2);}
  shiftTarget={x,y};if(!started){shift={x,y};applyViewShift();}}
-function resize(){const w=innerWidth,h=innerHeight,narrow=compactViewport();if(narrow!==mobile){mobile=narrow;if(narrow){$('#panel').classList.add('closed');setSettings(false);}renderer.setPixelRatio(dprCap());renderer.shadowMap.enabled=sun.castShadow=shadows();}renderer.setSize(w,h);labels.setSize(w,h);
+function resize(){labelsDirty=true;resolution.setCeiling(resolutionCeiling());syncResolution(idleResolution);const w=innerWidth,h=innerHeight,narrow=compactViewport();if(narrow!==mobile){mobile=narrow;if(narrow){$('#panel').classList.add('closed');setSettings(false);}renderer.shadowMap.enabled=sun.castShadow=shadows();}renderer.setSize(w,h);labels.setSize(w,h);
  const open=!mobile&&!$('#panel').classList.contains('closed');document.body.classList.toggle('with-panel',open);syncViewShift();applyViewShift();syncSeg();}
-let started=false;
 function syncVisibleViewport(){const vv=window.visualViewport,visible=vv?vv.height:innerHeight,editing=document.activeElement===$('#search');const inset=mobile&&editing&&vv?Math.max(0,innerHeight-vv.height-vv.offsetTop):0;document.documentElement.style.setProperty('--visible-height',`${Math.round(visible)}px`);document.documentElement.style.setProperty('--keyboard-inset',inset>120?`${Math.round(inset)}px`:'0px');document.body.classList.toggle('keyboard-open',inset>120);}
 window.visualViewport?.addEventListener('resize',syncVisibleViewport);window.visualViewport?.addEventListener('scroll',syncVisibleViewport);addEventListener('focusin',syncVisibleViewport);addEventListener('focusout',()=>requestAnimationFrame(syncVisibleViewport));addEventListener('resize',syncVisibleViewport);syncVisibleViewport();
 addEventListener('keydown',e=>{const v=$('#viewer');if(!v.hidden){if(e.key==='Escape')closeViewer();else if(e.key==='ArrowLeft'||e.key==='ArrowRight')v._go(e.key==='ArrowLeft'?-1:1);return;}if(e.key==='Escape'&&!$('#data-dialog').open){closeCard();closeMobileSheets(null);}});addEventListener('resize',resize);resize();
 const temp=new THREE.Vector3();
 function occluded(p){const a=camera.position,b=p.label.position;for(let k=2;k<24;k++){const t=k/24,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;if(Math.abs(x)>W/2||Math.abs(z)>D/2)continue;if(hAt(x,z)*EX>a.y+(b.y-a.y)*t+4)return true;}return false;}
-function updateLabels(){const show=$('#layer-labels').checked,cands=[],w=innerWidth,h=innerHeight,cam=camera.position,cap=labelCap??(mobile?28:60);
+function updateLabels(){labelSelections++;attachedLabels.length=0;const show=$('#layer-labels').checked,cands=[],w=innerWidth,h=innerHeight,cam=camera.position,cap=labelCap??(mobile?28:60);
  // Keep the query for reopening search, but only filter map labels while its panel is visible.
  const mapQuery=!$('#panel').classList.contains('closed')&&!$('#tab-places').hidden?search:'';
- for(const p of places.concat(extraLabels)){if(!p.label)continue;const lp=p.label.position,dist=Math.hypot(lp.x-cam.x,lp.y-cam.y,lp.z-cam.z);
+ for(const p of labelPlaces){const lp=p.label.position,dist=Math.hypot(lp.x-cam.x,lp.y-cam.y,lp.z-cam.z);
   let v=show&&(dist<p.limit||p===selected||(p.hall&&p.parent===selected&&dist<900))&&(p.road||p.hall||p.featured||filtered(p,mapQuery));let x=0,y=0;
   if(v){temp.copy(lp).project(camera);x=(temp.x+1)*w/2;y=(1-temp.y)*h/2;if(temp.z>1||temp.z<0||x<p.labelWidth/2+4||x>w-p.labelWidth/2-4||y<35||y>h-18)v=false;}
   if(v&&!p.road&&!p.featured&&occluded(p))v=false;cands.push({p,dist,x,y,v});}
  cands.sort((a,b)=>(!!b.p.featured)-(!!a.p.featured)||(b.p===selected)-(a.p===selected)||a.p.p-b.p.p||a.dist-b.dist);const occupied=[];visibleLabelCount=0;
  for(const c of cands){if(c.v){const r=[c.x-c.p.labelWidth/2,c.y-30,c.x+c.p.labelWidth/2,c.y+4];if(c.p!==selected&&!c.p.featured&&(visibleLabelCount>=cap||occupied.some(o=>!(r[2]<o[0]||r[0]>o[2]||r[3]<o[1]||r[1]>o[3]))))c.v=false;else{occupied.push(r);visibleLabelCount++;}}
-  if(c.v){if(!c.p.label.parent)scene.add(c.p.label);c.p.label.visible=true;}else if(c.p.label.parent)scene.remove(c.p.label);}
+  if(c.v){if(!c.p.label.parent)scene.add(c.p.label);c.p.label.visible=true;attachedLabels.push(c.p.label);}else if(c.p.label.parent)scene.remove(c.p.label);}
 }
-// Low-power devices draw ~20 fps while nothing moves (only the cable cars and the 居之林 pin animate then), and ~10 fps
-// once the map has been left alone for a while, which saves battery and heat; any touch, flight or sheet movement
-// returns to full rate. Tier benchmark (see TIERS): while it runs every frame is drawn and its interval sampled. Phase 1
-// measures the starting tier: under 30 fps → 流畅 (or below it); 50 fps or more → phase 2 tries one tier up and keeps it
-// only at ~45 fps or better. Afterwards runs of back-to-back frames are watched and a tier under ~25 fps steps down.
-let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,benchUntil=0,benchPhase=0,benchFrom=0,samples=[],frameAvg=16.7,frameN=0,watchAt=0;
-for(const ev of['pointerdown','pointermove','wheel','keydown','input','change'])addEventListener(ev,()=>{lastInput=performance.now();},{capture:true,passive:true});
-const trimmedMean=a=>{const q=[...a].sort((x,y)=>x-y).slice(0,Math.max(1,Math.ceil(a.length*.9)));return q.reduce((x,y)=>x+y,0)/q.length;};
+function renderLabelLayer(){labelRoot.children=attachedLabels.filter(o=>o.parent).concat(routes?.labelObjects||[]);labels.render(labelRoot,camera);labelPasses++;}
+// Idle phones retain low-rate decorative animation. Skip that animation's CPU work
+// as well as the GPU draw on unused frames; gestures, damping and route previews
+// still run at full rate. Idle resolution restores clarity without lowering models.
+let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,benchUntil=0,benchPhase=0,benchFrom=0,samples=[],frameAvg=16.7,frameN=0,watchAt=0,tierProbeAllowed=true;
+let selectionPending=true,selectionAt=0,hudAt=0,animationUpdates=0;
+const labelCamera=new THREE.Matrix4(),labelProjection=new THREE.Matrix4();
+for(const ev of['pointerdown','pointermove','wheel','keydown','input','change','click'])addEventListener(ev,()=>{lastInput=performance.now();if(['keydown','input','change','click'].includes(ev))labelsDirty=true;},{capture:true,passive:true});
 function startBench(phase){benchPhase=phase;benchUntil=performance.now()+3000;samples=[];}
 function setTier(t,why){t=Math.max(0,Math.min(maxTier,t));const was=tier,wasE=emergency;tier=t;emergency=why==='emergency';if(t!==was||emergency!==wasE)applyTier();}
-function measure(dt,now){
- if(benchUntil){if(now<benchUntil-2200)return; // the first frames of a phase compile shaders and upload geometry
-  samples.push(Math.min(dt,200));if(now<benchUntil||samples.length<12)return;
-  const ms=trimmedMean(samples);benchUntil=0;frameAvg=ms;frameN=0;watchAt=now+4000;
-  if(benchPhase===1){if(ms>33.3){if(tier>0)setTier(0,'slow');else if(!emergency)setTier(0,'emergency');}
-   else if(ms<20&&tier<maxTier&&!emergency){benchFrom=tier;tier=tier+1;applyTier();startBench(2);return;}}
-  else if(benchPhase===2&&ms>22){tier=benchFrom;applyTier();}
-  store.set('autoTier',tier);return;}
- frameAvg=frameN?frameAvg+(Math.min(dt,150)-frameAvg)*.05:Math.min(dt,150);frameN++;
- if(now>watchAt&&frameN>40&&frameAvg>40){
-  if(tier>0)setTier(tier-1,'slow');else if(!emergency)setTier(0,'emergency');
-  store.set('autoTier',tier);frameN=0;watchAt=now+4000;}
+function applyBudget(result,now){
+ if(result.action==='resolution-down'||result.action==='resolution-up'){syncResolution(false,now);return true;}
+ if(result.action==='tier-down'){
+  tierProbeAllowed=false;
+  if(tier>0)setTier(benchPhase===2&&tier>benchFrom?benchFrom:tier-1,'slow');
+  else if(!emergency)setTier(0,'emergency');else return false;
+  store.set('autoTier',tier);return true;
+ }
+ return false;
 }
+function measure(dt,now){
+ if(now-resolutionChangedAt<500)return; // resizing/upload work is not steady-state load
+ if(benchUntil){if(now<benchUntil-2200)return; // the first frames of a phase compile shaders and upload geometry
+  samples.push(Math.min(dt,250));if(now<benchUntil||samples.length<12)return;
+  const result=resolution.observe(samples,now);frameAvg=result.mean;frameN=0;
+  if(applyBudget(result,now)){startBench(benchPhase===2&&tier>benchFrom?2:1);return;}
+  benchUntil=0;samples=[];watchAt=now+3000;
+  if(benchPhase===1&&tierProbeAllowed&&result.fast&&resolution.limit===resolution.ceiling&&tier<maxTier&&!emergency){
+   tierProbeAllowed=false;benchFrom=tier;setTier(tier+1,'probe');startBench(2);return;}
+  if(benchPhase===2&&result.mean>22){setTier(benchFrom,'probe-revert');}
+  benchPhase=0;store.set('autoTier',tier);return;
+ }
+ frameAvg=frameN?frameAvg+(Math.min(dt,250)-frameAvg)*.05:Math.min(dt,250);frameN++;
+ samples.push(Math.min(dt,250));if(samples.length>240)samples.shift();
+ if(now>watchAt&&frameN>45){const result=resolution.observe(samples,now);applyBudget(result,now);frameN=0;samples=[];watchAt=now+3000;}
+}
+document.addEventListener('visibilitychange',()=>{lastFrame=0;renderedLast=false;samples=[];frameN=0;labelsDirty=true;if(!document.hidden&&benchUntil)startBench(benchPhase);});
 function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;return;}
  const dt=lastFrame?now-lastFrame:16.7;lastFrame=now;
  for(const f of frameHooks)f(now,dt);
- if(tween){const t=clamp((now-tween.start)/tween.ms,0,1),e=t<.5?4*t*t*t:1-(-2*t+2)**3/2;camera.position.lerpVectors(tween.p0,tween.p1,e);controls.target.lerpVectors(tween.t0,tween.t1,e);camera.position.y+=Math.sin(t*Math.PI)*Math.min(180,tween.p0.distanceTo(tween.p1)*.12);if(t===1){const done=tween.onDone;tween=null;done?.();}}
+ cameraFlight.update(now);
  controls.target.x=clamp(controls.target.x,-W/2,W/2);controls.target.z=clamp(controls.target.z,-D/2,D/2);const moved=controls.update();if(Math.abs(camera.position.x)<W/2&&Math.abs(camera.position.z)<D/2&&!inTerrainCut(camera.position.x,camera.position.z))camera.position.y=Math.max(camera.position.y,hAt(camera.position.x,camera.position.z)*EX+8);
- for(const m of movers){const t=reduce?m.phase:m.kind==='funicular'?(Math.sin(now/16000)*.5+.5)*.96+.02:((now/140000)+m.phase)%1;const p=m.curve.getPoint(t);m.g.position.copy(p);if(m.kind==='cable')m.g.position.y-=5.5;const tangent=m.curve.getTangent(t);m.g.rotation.y=Math.atan2(-tangent.z,tangent.x);}
  const shifting=shift.x!==shiftTarget.x||shift.y!==shiftTarget.y;
  if(shifting){const k=1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
- if(lowPower&&!benchUntil&&!tween&&!moved&&!shifting&&now-lastInput>1500&&now-lastRender<(now-lastInput>8000?98:48)){renderedLast=false;return;}
- if(renderedLast)measure(dt,now);renderedLast=true;lastRender=now;
+ const idle=lowPower&&!benchUntil&&!cameraFlight.active&&!moved&&!shifting&&!routes?.previewing&&now-lastInput>1500;
+ if(idle&&!labelsDirty&&now-lastRender<(now-lastInput>8000?98:48)){renderedLast=false;return;}
+ if(renderedLast&&!idle)measure(dt,now);else if(!benchUntil){samples=[];frameN=0;}renderedLast=true;lastRender=now;syncResolution(idle,now);
+ animationUpdates++;
+ for(const m of movers){const t=reduce?m.phase:m.kind==='funicular'?(Math.sin(now/16000)*.5+.5)*.96+.02:((now/140000)+m.phase)%1;const p=m.curve.getPoint(t);m.g.position.copy(p);if(m.kind==='cable')m.g.position.y-=5.5;const tangent=m.curve.getTangent(t);m.g.rotation.y=Math.atan2(-tangent.z,tangent.x);}
  const distance=camera.position.distanceTo(controls.target),TQ=TIERS[tier];for(const g of detailedGroups)g.visible=distance<TQ.landmarkDist;
+ for(const batch of spatialBatches)batch.update(distance);
  for(const t of forestTiles)if(t.trunk)t.trunk.visible=distance<TQ.trunkDist;for(const m of farDetail)m.visible=distance<TQ.detailDist;
  if(featuredPin){const d=camera.position.distanceTo(featuredPin.position),k=clamp(d/160,1,26);featuredPin.scale.setScalar(k);featuredPin.rotation.y=now/1400;const fp=featured;if(fp?.label)fp.label.position.y=(featuredPin.userData.base+featuredPin.userData.head*k)*EX+2*k;}
- if(frame++%7===0){updateLabels();const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':'九华山全景 · 双指缩放';const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
- renderer.render(scene,camera);labels.render(scene,camera);if(frame===30)console.info('Map verification',JSON.stringify(window.mapDiagnostics));
+ camera.updateMatrixWorld();const cameraChanged=!labelCamera.equals(camera.matrixWorld)||!labelProjection.equals(camera.projectionMatrix);
+ if(cameraChanged)selectionPending=true;
+ const selectedLabels=labelsDirty||selectionPending&&now-selectionAt>=110;
+ if(selectedLabels){updateLabels();selectionAt=now;selectionPending=false;}
+ if(selectedLabels||cameraChanged&&now-hudAt>=110){hudAt=now;const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':'九华山全景 · 双指缩放';const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
+ renderer.render(scene,camera);const routeLabelsChanged=routes?.updateLabels(now);
+ if(cameraChanged||selectedLabels||routeLabelsChanged)renderLabelLayer();labelsDirty=false;
+ labelCamera.copy(camera.matrixWorld);labelProjection.copy(camera.projectionMatrix);
+ if(++frame===30)console.info('Map verification',JSON.stringify(window.mapDiagnostics));
 }
-started=true;applyTier();startBench(1);$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;interactionGuide.start();},700);requestAnimationFrame(tick);
+started=true;applyTier();startBench(1);$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;if(!document.body.classList.contains('map-chrome-hidden'))interactionGuide.start();},700);requestAnimationFrame(tick);
 // Inspectable public diagnostics are also useful for verifying delivery, without private app state.
-window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get quality(){return TIERS[tier].name+(emergency?'-':'');},get tier(){return tier;},get frameMs(){return Math.round(frameAvg*10)/10;},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;}};
+window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get quality(){return TIERS[tier].name+(emergency?'-':'');},get tier(){return tier;},get frameMs(){return Math.round(frameAvg*10)/10;},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;},get resolutionLimit(){return resolution.limit;},get idleResolution(){return idleResolution;},get spatialMode(){return spatialBatches.some(b=>b.near)?'near':'far';},get labelPasses(){return labelPasses;},get labelSelections(){return labelSelections;},get animationUpdates(){return animationUpdates;}};
 }

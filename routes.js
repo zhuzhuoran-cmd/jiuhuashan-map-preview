@@ -27,6 +27,8 @@ export function setupRoutes(ctx) {
   const group = new THREE.Group(); group.renderOrder = 5; world.add(group);
   const materials = [];
   let current = null, labels = [], marks = [], path = null, preview = null, focusIndex = -1;
+  let finishTimer = null;
+  const cancelFinish = () => { clearTimeout(finishTimer); finishTimer = null; };
 
   // ---- geometry: parts sampled every ~6 m, draped a little above the terrain (cable lines hang above it)
   function sample(part) {
@@ -102,10 +104,10 @@ export function setupRoutes(ctx) {
   let placedKey = '', placedAt = 0, rect = null;
   const v = new THREE.Vector3();
   function placeNames(now) {
-    if (!marks.length) return;
+    if (!marks.length) return false;
     camera.updateMatrixWorld();
-    const key = camera.matrixWorld.elements.map(e => e.toFixed(1)).join() + innerWidth + 'x' + innerHeight + ':' + focusIndex;
-    if (key === placedKey && now - placedAt < 500) return;  // still camera: re-check twice a second (a sheet may have moved)
+    const key = camera.matrixWorld.elements.map(e => e.toFixed(1)).join() + camera.projectionMatrix.elements.join() + innerWidth + 'x' + innerHeight + ':' + focusIndex;
+    if (key === placedKey && now - placedAt < 500) return false;  // still camera: re-check twice a second (a sheet may have moved)
     if (!rect || now - placedAt >= 500) rect = visibleRect();  // reads the page layout, so at most twice a second
     placedKey = key; placedAt = now;
     const R = rect, W = innerWidth, H = innerHeight, taken = [], active = labels[focusIndex];
@@ -142,6 +144,7 @@ export function setupRoutes(ctx) {
       }
       m.box.classList.toggle('named', side !== 0); m.box.classList.toggle('flip', side === -1);
     }
+    return true;
   }
 
   // ---- the travelled path: cumulative distance, pace per point, and where each stop falls
@@ -219,15 +222,15 @@ export function setupRoutes(ctx) {
   // ---- preview: the target walks the path; the camera trails behind, facing the direction of travel
   function startPreview() {
     if (!current || !path) return;
-    cancelFlight(); closeSheetsForRoute();
+    cancelFinish(); cancelFlight(); closeSheetsForRoute(); controls.stopMotion?.();
     const secs = Math.min(42, Math.max(22, path.total / 90));
-    preview = {s: 0, speed: path.total / secs, pause: 1.2, stop: 0, heading: null, dist: current.id === 'tiantai-classic' ? 430 : 250};
-    setFocus(0); updateHud();
+    preview ??= {s: 0, speed: path.total / secs, pause: 1.2, stop: 0, heading: null, dist: current.id === 'tiantai-classic' ? 430 : 250};
+    preview.paused = false;
+    setFocus(preview.stop); updateHud();
   }
-  function stopPreview() { if (!preview) return; preview = null; updateHud(); }
-  onFrame(now => { if (current) placeNames(now); });
+  function stopPreview() { cancelFinish(); if (!preview || preview.paused) return; preview.paused = true; updateHud(); }
   onFrame((now, dt) => {
-    if (!preview || !path) return;
+    if (!preview || preview.paused || !path) return;
     const sec = Math.min(dt, 64) / 1000;
     if (preview.pause > 0) preview.pause -= sec;
     else {
@@ -245,9 +248,12 @@ export function setupRoutes(ctx) {
     const cam = target.clone().add(new THREE.Vector3(-Math.sin(preview.heading) * d * Math.sin(pol), d * Math.cos(pol), Math.cos(preview.heading) * d * Math.sin(pol)));
     const k = Math.min(1, sec * 3.2);
     controls.target.lerp(target, k); camera.position.lerp(cam, k);
-    if (preview.s >= path.total && preview.pause <= 0) { preview = null; setFocus(-1); updateHud(true); setTimeout(overview, 400); }
+    if (preview.s >= path.total && preview.pause <= 0) {
+      preview = null; setFocus(-1); updateHud(true);
+      finishTimer = setTimeout(() => { finishTimer = null; overview(); }, 400);
+    }
   });
-  controls.addEventListener('start', stopPreview);
+  controls.addEventListener('gesturestart', stopPreview);
 
   // ---- panel: list and itinerary
   function card(route) {
@@ -310,7 +316,7 @@ export function setupRoutes(ctx) {
     }
     const acts = el('div', 'route-actions');
     const play = el('button', 'btn primary route-play'); play.type = 'button'; play.innerHTML = PLAY_SVG; play.append('路线预演');
-    play.onclick = () => preview ? stopPreview() : startPreview();
+    play.onclick = () => preview && !preview.paused ? stopPreview() : startPreview();
     const fit = el('button', 'btn ghost'); fit.type = 'button'; fit.innerHTML = FIT_SVG; fit.append('看全程'); fit.onclick = overview;
     acts.append(play, fit);
     const steps = el('ol', 'route-steps');
@@ -339,33 +345,35 @@ export function setupRoutes(ctx) {
 
   function open(id) {
     const route = routes.find(r => r.id === id); if (!route) return;
-    stopPreview(); current = route; focusIndex = -1;
+    stopPreview(); preview = null; current = route; focusIndex = -1;
     openPanel('routes');
     list.hidden = true; detail.hidden = false; renderDetail(route); draw(route);
     const to = fitPose(route); fly(to, 1600);
     updateHud();
   }
   function close() {
-    stopPreview(); current = null; clearDrawing();
+    stopPreview(); cancelFlight(); preview = null; current = null; clearDrawing();
     detail.hidden = true; list.hidden = false; updateHud();
   }
 
   // ---- compact bar while the route is on the map and the panel is out of the way (or a preview is playing)
   function updateHud(finished) {
+    ctx.onPlaybackChange?.();
+    const playing = !!preview && !preview.paused, playLabel = playing ? '暂停预演' : preview ? '继续预演' : '路线预演';
     const play = detail.querySelector('.route-play');
-    if (play) { play.innerHTML = preview ? STOP_SVG : PLAY_SVG; play.append(preview ? '停止预演' : '路线预演'); }
+    if (play) { play.innerHTML = playing ? STOP_SVG : PLAY_SVG; play.append(playLabel); }
     if (!current) { hud.hidden = true; return; }
     const s = current.stops[Math.max(0, focusIndex)];
     hud.querySelector('b').textContent = current.short;
     hud.querySelector('small').textContent = preview || focusIndex >= 0 ? `${Math.max(0, focusIndex) + 1} / ${current.stops.length} · ${s.n}` : finished ? '预演完毕 · 可再看一次' : `${current.stops.length} 站 · ${current.duration}`;
-    const pb = hud.querySelector('.rh-play'); pb.innerHTML = preview ? STOP_SVG : PLAY_SVG; pb.setAttribute('aria-label', preview ? '停止预演' : '路线预演');
-    hud.hidden = false; hud.classList.toggle('playing', !!preview);
+    const pb = hud.querySelector('.rh-play'); pb.innerHTML = playing ? STOP_SVG : PLAY_SVG; pb.setAttribute('aria-label', playLabel);
+    hud.hidden = false; hud.classList.toggle('playing', playing);
   }
-  hud.querySelector('.rh-play').onclick = () => preview ? stopPreview() : startPreview();
+  hud.querySelector('.rh-play').onclick = () => preview && !preview.paused ? stopPreview() : startPreview();
   hud.querySelector('.rh-list').onclick = () => { stopPreview(); openPanel('routes'); };
   hud.querySelector('.rh-close').onclick = close;
   addEventListener('keydown', e => { if (e.key === 'Escape' && preview) stopPreview(); });
 
   renderList();
-  return {open, close, stopPreview, get active() { return current; }, get previewing() { return !!preview; }};
+  return {open, close, stopPreview, startPreview, updateLabels: placeNames, get labelObjects() { return marks.map(m => m.label); }, get active() { return current; }, get previewing() { return !!preview && !preview.paused; }, get canResume() { return !!preview?.paused; }};
 }
