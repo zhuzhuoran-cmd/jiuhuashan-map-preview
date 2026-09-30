@@ -229,8 +229,9 @@ body.with-panel .info-card{left:calc(50% - 160px)}
 .info-card.arrive .card-content>:nth-child(n+5){animation-delay:.52s}
 .card-hero{position:relative;flex:none;display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x mandatory;padding:8px 8px 0;scrollbar-width:none}
 .card-hero::-webkit-scrollbar{display:none}
-.card-hero a{flex:none;scroll-snap-align:start;border-radius:12px;overflow:hidden;background:var(--paper-3)}
+.card-hero a{position:relative;flex:none;scroll-snap-align:start;border-radius:12px;overflow:hidden;background:var(--paper-3)}
 .card-hero img{display:block;height:176px;width:auto;transition:transform .5s var(--ease)}
+.photo-date{position:absolute;left:0;right:0;bottom:0;padding:14px 8px 5px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;font-size:10px;line-height:1.5;text-align:left;pointer-events:none}
 @media(hover:hover){.card-hero a:hover img{transform:scale(1.04)}}
 .card-head{position:relative;flex:none;padding:16px 56px 6px 20px}
 .info-card>.close{position:absolute;top:12px;right:12px;z-index:2;background:rgba(255,255,255,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:var(--shadow-1)}
@@ -467,13 +468,13 @@ body.with-panel .route-hud{left:calc(50% - 170px);width:min(620px,calc(100vw - 4
 .loading.failed .load-bar{display:none}.loading.failed .load-art path{animation:none;stroke-dashoffset:0}
 .loading.failed p{max-width:min(340px,calc(100vw - 48px));text-align:center;line-height:1.7;color:var(--ink-2)}
 
-/* ---- full-screen photo viewer (owner photos in the 居之林 card); swipe or arrows between photos ---- */
+/* ---- full-screen photo viewer; swipe or arrows between credited place photos ---- */
 .viewer{position:fixed;inset:0;z-index:12;background:rgba(8,14,11,.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:0;transition:opacity .26s var(--ease)}
 .viewer.show{opacity:1}
 .viewer-strip{display:flex;height:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior:contain;scrollbar-width:none;touch-action:pan-x}
 .viewer-strip::-webkit-scrollbar{display:none}
 .viewer .slide{flex:none;width:100%;height:100%;display:grid;place-items:center;scroll-snap-align:center;scroll-snap-stop:always;
- padding:calc(56px + env(safe-area-inset-top,0px)) calc(12px + env(safe-area-inset-right,0px)) calc(52px + env(safe-area-inset-bottom,0px)) calc(12px + env(safe-area-inset-left,0px))}
+ padding:calc(56px + env(safe-area-inset-top,0px)) calc(12px + env(safe-area-inset-right,0px)) calc(116px + env(safe-area-inset-bottom,0px)) calc(12px + env(safe-area-inset-left,0px))}
 .viewer .slide img{max-width:100%;max-height:100%;border-radius:10px;object-fit:contain;box-shadow:0 12px 40px rgba(0,0,0,.4)}
 .viewer .icon-btn{position:absolute;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .viewer .icon-btn svg{width:20px;height:20px}
@@ -482,6 +483,9 @@ body.with-panel .route-hud{left:calc(50% - 170px);width:min(620px,calc(100vw - 4
 @media(hover:none){.viewer-prev,.viewer-next{display:none!important}}
 @media(hover:hover){.viewer .icon-btn:hover{background:rgba(255,255,255,.26);color:#fff}}
 .viewer-count{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);color:rgba(255,255,255,.85);font-size:12px;letter-spacing:.1em;pointer-events:none}
+.viewer-caption{position:absolute;left:16px;right:16px;bottom:calc(42px + env(safe-area-inset-bottom,0px));max-height:68px;overflow:auto;text-align:center;color:#fff;font-size:13px;line-height:1.5}
+.photo-credit{font-size:11px;line-height:1.7;overflow-wrap:anywhere}.photo-credit a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.photo-credits p{margin-bottom:2px}.viewer-caption .photo-credit{color:rgba(255,255,255,.8)}
 
 /* ---- motion ---- */
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}

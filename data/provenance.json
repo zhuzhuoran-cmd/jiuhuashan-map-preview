@@ -4,7 +4,7 @@
   "buildings": 1424,
   "roads": 148,
   "water": 18,
-  "places": 1178,
+  "places": 1177,
   "businesses": 815,
   "osmBuildings": 892,
   "supplementaryBuildings": 532,
@@ -14,19 +14,19 @@
   "convertedListings": 440,
   "legacyPlaces": 0,
   "shops": 47,
-  "temples": 110,
+  "temples": 109,
   "sights": 141,
   "villages": 35,
   "services": 60,
   "transport": 16,
   "halls": 85,
-  "multiSource": 49,
+  "multiSource": 48,
   "platformListings": 301,
   "unverifiedListings": 331,
   "businessesLinkedToBuildings": 413,
   "namedRoadSegments": 6,
   "userConfirmed": 11,
-  "searchablePlaces": 329
+  "searchablePlaces": 328
  },
  "extent": {
   "origin": {
@@ -1536,7 +1536,8 @@
    "百岁宫": "用户 2026-09-28 核验：天然睡佛由花台花岗岩群峰自然构成，从百岁宫向花台远眺可见；群峰的具体位置尚未确定，不标注山体坐标。",
    "九华山居之林民宿(肉身宝殿店)": "业主店铺：按实拍照片手工建模，点位移到模型中部",
    "三角洲车站": "用户标出位置并说明线路（去天台的景交车在此上车），新增；车站旁台阶下到神光岭广场",
-   "虎形山车站": "用户确认为景交车始发站、天台返程终点站"
+   "虎形山车站": "用户确认为景交车始发站、天台返程终点站",
+   "通慧禅林": "用户2026-09-30确认：通慧庵与通慧禅林是同一寺院，以“通慧禅林”为名；保留原通慧禅林坐标。"
   },
   "movedBuildings": {
    "osm-way-609956401": "檀香缘民宿楼：用户 2026-09-27 指出离居之林太近，沿路向西平移 16 米",

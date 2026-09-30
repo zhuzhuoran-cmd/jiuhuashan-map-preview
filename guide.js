@@ -1,6 +1,6 @@
 // 游览须知: the panel page built from G.guide (scripts/r3/guide.py) and the official transit hours in G.transit, plus the
 // small label that says how a paragraph of a place's story should be read (史料 / 信仰 / 传说 / 建筑 / 提示).
-const KIND = {史料: 'history', 信仰: 'belief', 传说: 'legend', 建筑: 'building', 提示: 'tip'};
+const KIND = {史料: 'history', 信仰: 'belief', 传说: 'legend', 建筑: 'building', 地貌: 'building', 提示: 'tip'};
 
 function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
 export function kindLabel(kind) { return el('span', 'kind k-' + (KIND[kind] || 'tip'), kind); }
