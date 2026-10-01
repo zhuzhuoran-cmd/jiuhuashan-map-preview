@@ -3,11 +3,12 @@ import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js?v=20260929-camera-handoff';
-import {setupRoutes} from './routes.js?v=20260930-ride-camera';
+import {setupRoutes} from './routes.js?v=20261001-redesign';
 import {setupGuide,kindLabel} from './guide.js?v=20260930-place-details';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 import {createSpatialBatch,AdaptiveResolution} from './render-performance.js?v=20260929-mobile-perf';
+import {setupSheetDrag} from './sheet-drag.js?v=20261001-redesign';
 
 const interactionGuide=setupInteractionGuide();
 
@@ -27,7 +28,7 @@ const maxTier=lowPower?2:3;
 const store={get(k){try{return localStorage.getItem('jiuhua.'+k);}catch{return null;}},set(k,v){try{localStorage.setItem('jiuhua.'+k,v);}catch{}}};
 let tier=+(store.get('autoTier')??(lowPower?1:3));if(!(tier>=0&&tier<=maxTier))tier=lowPower?1:3;
 let emergency=false; // below 流畅: automatic only, when even 流畅 cannot hold ~25 fps
-const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches,fineMouse=matchMedia('(hover:hover) and (pointer:fine)');
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const rng=seed=>()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
@@ -41,9 +42,12 @@ function toast(s){const t=$('#toast');t.textContent=s;reveal(t);clearTimeout(toa
 function fatal(msg){const l=$('#loading');l.hidden=false;l.classList.remove('done');l.classList.add('failed');$('#load-text').textContent=msg;const r=$('#reload');r.hidden=false;r.onclick=()=>location.reload();}
 // iOS Safari ignores user-scalable; a pinch that starts on a panel or label would zoom the whole page instead of the map.
 addEventListener('gesturestart',e=>e.preventDefault());
+// If the page's watchdog offered a reload while the data was slow, take the offer back once the data is in.
+function unstall(){const r=$('#reload');if(r.hidden||$('#loading').classList.contains('failed'))return;r.hidden=true;$('#load-text').textContent='读取地形与真实建筑轮廓';}
 try{await init();}catch(e){console.error(e);fatal(/webgl/i.test(e.message)?'这个浏览器无法显示三维地图（WebGL 不可用）。请换用系统浏览器或更新浏览器后重试；在微信里可点右上角“···”，选“在浏览器打开”。':'地图加载失败，请重新加载。'+e.message);}
 async function init(){
 const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20260930-place-photos'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
+unstall();
 const {W,D,N}=M, bytes=Uint8Array.from(atob(M.h),c=>c.charCodeAt(0)),dv=new DataView(bytes.buffer),H=new Float32Array(N*N);
 for(let i=0;i<H.length;i++)H[i]=dv.getUint16(i*2,true)/4;
 let EX=1;const hMin=Math.min(...H);
@@ -67,7 +71,7 @@ const labels=new CSS2DRenderer();labels.domElement.className='labels';$('#stage'
 // A read-only CSS render list, not a second parent. Real labels keep their scene /
 // route parents and world matrices; CSS2D no longer walks all the geometry again.
 const labelRoot=new THREE.Group();labelRoot.matrixWorldAutoUpdate=false;
-const attachedLabels=[];let labelsDirty=true,labelPasses=0,labelSelections=0;
+const attachedLabels=[];let labelsDirty=true,labelPasses=0,labelSelections=0,coversDirty=true,chromeRects=[],coverMeasures=0;
 const scene=new THREE.Scene();scene.fog=new THREE.FogExp2('#ceded9',.000072);
 const world=new THREE.Group(),built=new THREE.Group(),forest=new THREE.Group(),trailGroup=new THREE.Group(),decor=new THREE.Group();scene.add(world);world.add(built,forest,trailGroup,decor);
 const camera=new THREE.PerspectiveCamera(43,1,.7,32000);const controls=createMapControls(camera,$('#stage'),onMapTap);
@@ -969,16 +973,26 @@ function closestBuilding(p,max=20){let best=null,dist=max;const gx=Math.floor(p.
 const buildingById=new Map(G.buildings.map(b=>[b.id,b]));
 // Labels are created for every place but only attached to the scene while shown (≈1,200 places).
 const HOUSE_SVG='<svg viewBox="0 0 24 24"><path d="M4 11.2 12 4.5l8 6.7V19a1 1 0 0 1-1 1h-4.6v-5.2H9.6V20H5a1 1 0 0 1-1-1z"/></svg>';
-function makeLabel(p,cls,text,onClick){const el=node('div','maplabel '+cls);const btn=node('button','');btn.type='button';if(p.featured){const ic=node('span','lb-icon');ic.innerHTML=HOUSE_SVG;btn.append(ic);}btn.append(text);if(onClick)btn.onclick=onClick;else btn.tabIndex=-1;el.append(btn,node('i'));const label=new CSS2DObject(el);label.center.set(.5,1);p.label=label;p.el=el;
- const n=[...text].length;p.labelWidth=cls.includes('featured')?n*15+56:cls.includes('major')?n*15+36:cls.includes('small')||cls.includes('road')?n*10+24:n*11+30;return label;}
+// Label sizes for collision culling, measured from the .maplabel rules in style.css (phone and desktop render alike):
+// px per CJK glyph (1em + letter-spacing, the same in every CJK font), px per other glyph (about .6em, e.g. "-"),
+// fixed px (padding, dot, gap, border) and the height above the anchor (pill + stem). Keep in step with style.css.
+const LABEL_SIZE={featured:[14.85,9.5,48,39],area:[16.5,11.5,4,15],major:[14.04,8.8,34,34],small:[10.71,6.6,24,27],road:[10.2,6.2,18,20],plain:[12.24,7.5,29,31]};
+function labelSize(cls,text){const[cjk,other,fixed,height]=LABEL_SIZE[['featured','area','major','small','road'].find(k=>cls.includes(k))||'plain'];let w=fixed;for(const ch of text)w+=ch.codePointAt(0)>=0x2e80?cjk:other;return[Math.ceil(w),height];}
+// Map labels stay out of the Tab order: the map (#stage, role=img) comes first in the page, and the list, search and
+// 居之林 button reach the same places by keyboard. A click or tap still opens them.
+function makeLabel(p,cls,text,onClick){const el=node('div','maplabel pin '+cls);p.stem=cls.includes('featured')?9:cls.includes('area')||cls.includes('road')?0:7;const btn=node('button','');btn.type='button';btn.tabIndex=-1;if(p.featured){const ic=node('span','lb-icon');ic.innerHTML=HOUSE_SVG;btn.append(ic);}btn.append(text);if(onClick)btn.onclick=onClick;el.append(btn,node('i'));const label=new CSS2DObject(el);label.center.set(.5,1);p.label=label;p.el=el;
+ [p.labelWidth,p.labelHeight]=labelSize(cls,text);return label;}
 // Only temples, sights, place names and public facilities are labelled, plus 居之林; other businesses are not shown.
 for(const p of places){if(!Number.isFinite(p.x)||!Number.isFinite(p.z)||!(p.searchable||p.featured))continue;
  const cls=(p.featured?'featured ':'')+'c-'+p.category+(p.p===1&&!p.featured?' major':'')+(estimated(p)?' estimated':'')+(p.category==='village'?' area':'');
  const label=makeLabel(p,cls,p.displayName||p.shortName||p.n,()=>selectPlace(p,true));
+ // Label tiers. 2 = must show (居之林 and the major sights, p1): never dropped. 1 = temples with a story: placed ahead of
+ // the rest, a leader line if need be, and only left out when no spot keeps them readable. 0 = the rest.
+ p.tier=p.featured||p.p===1?2:p.category==='temple'&&p.story?1:0;
  const anchored=p.n==='百岁宫'?G.buildings.find(b=>b.osmId===541482372):null,b=anchored||(p.buildingId&&buildingById.get(p.buildingId))||closestBuilding(p,business(p)?12:35);
  p.top=landmarkTop.get(p.n)??(p.category==='village'?hAt(p.x,p.z)+40:b?b.base+b.wallHeight+b.roofRise:hAt(p.x,p.z)+(p.category==='temple'?22:business(p)?9:11));
  label.position.set(anchored?anchored.center[0]:p.x,p.top+5,anchored?anchored.center[1]:p.z);p.nearest=b;
- p.limit=p.featured?Infinity:p.p===1?9500:p.category==='village'?2600:business(p)?(p.quality==='unverified_listing'?650:1250):p.category==='temple'?3600:p.p<=2?3600:1900;}
+ p.limit=p.featured||p.p===1?Infinity:p.category==='village'?2600:business(p)?(p.quality==='unverified_listing'?650:1250):p.category==='temple'?3600:p.p<=2?3600:1900;}
 // Temple halls (Qunar hall records near their parent temple) and road names: small labels at close range only.
 const extraLabels=[];
 for(const p of places)for(const h of p.halls||[]){const q={n:h.n,x:h.x,z:h.z,p:5,parent:p,limit:300,hall:true};makeLabel(q,'small hall',h.n,()=>selectPlace(p,false));q.top=hAt(h.x,h.z)+9;q.label.position.set(h.x,q.top+4,h.z);extraLabels.push(q);}
@@ -998,24 +1012,40 @@ let homePose=null;
 function saveHome(){const to=cameraFlight.destination;homePose??={pos:(to?to.pos:camera.position).clone(),target:(to?to.target:controls.target).clone(),view:$('.viewbar button.active')?.dataset.view};}
 function flyHome(){const h=homePose;homePose=null;if(!h)return;fly(h,Math.round(flightMs(h)*1.2));$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===h.view));syncSeg();}
 const heading=()=>{const d=controls.target.clone().sub(camera.position);return Math.atan2(d.x,-d.z)*180/Math.PI;};
-// The guesthouse is always shown from the road (front). On desktop the target sits 22 m roadside so the lodge shows above
-// the bottom card; phones aim at the lodge itself, since their sheets already shift the map centre clear (syncViewShift).
-function featuredPose(dist=mobile?220:160){const a=15*Math.PI/180,off=mobile?0:22,x=featured.x-Math.sin(a)*off,z=featured.z+Math.cos(a)*off;return pose(x,z,dist,15,57);}
+// The guesthouse is always shown from the road (front), aimed at the lodge itself: the card (a phone's sheet or the desktop
+// column) already shifts the map centre clear of it (syncViewShift).
+function featuredPose(dist=mobile?220:160){return pose(featured.x,featured.z,dist,15,57);}
 function placePose(p){if(p.model?.kind==='entrance-checkpoint'&&checkpointSite)return pose(p.x,p.z,mobile?150:110,checkpointSite.viewAzimuth,59);return pose(p.x,p.z,p.category==='temple'?400:300,heading(),57);}
-function syncSeg(){const nav=$('.viewbar'),a=nav.querySelector('button.active');if(!a){nav.style.setProperty('--ind-o',0);return;}nav.style.setProperty('--ind-x',a.offsetLeft-4+'px');nav.style.setProperty('--ind-w',a.offsetWidth+'px');nav.style.setProperty('--ind-o',1);}
+// Sliding indicators (view bar, panel tabs) are placed from fractional rects, not the rounded offset* values, so the pill
+// lines up to the device pixel; k undoes any scale on the bar mid-transition. x is from the bar's padding box.
+function indicator(bar,a,px,pw){const n=bar.getBoundingClientRect(),r=a.getBoundingClientRect(),k=n.width/bar.offsetWidth||1;bar.style.setProperty(px,((r.left-n.left)/k-bar.clientLeft).toFixed(2)+'px');bar.style.setProperty(pw,(r.width/k).toFixed(2)+'px');}
+function syncSeg(){const nav=$('.viewbar'),a=nav.querySelector('button.active');if(!a){nav.style.setProperty('--ind-o',0);return;}indicator(nav,a,'--ind-x','--ind-w');nav.style.setProperty('--ind-o',1);}
 function clearViews(){$$('[data-view]').forEach(b=>b.classList.remove('active'));syncSeg();}
-function view(name){homePose=null;const poses={town:()=>pose(-1390,50,mobile?1550:1370,38,53),all:()=>pose(-150,200,7800,110,51),top:()=>pose(controls.target.x,controls.target.z,Math.max(900,camera.position.distanceTo(controls.target)),0,1),baisui:()=>{const b=G.buildings.find(b=>b.osmId===541482372);return pose(...b.center,260,60,63);},juzhilin:()=>featuredPose(),tiantai:()=>pose(773,1635,520,130,64)};fly(poses[name]());$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));syncSeg();}
-$$('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));controls.addEventListener('gesturestart',()=>{cameraFlight.cancel();clearViews();syncViewShift();});
-fly(pose(-1390,50,mobile?1550:1370,38,53),0);
+const townPose=()=>pose(-1390,50,mobile?1550:1370,38,53);
+function view(name){homePose=null;const poses={town:townPose,all:()=>pose(-150,200,7800,110,51),top:()=>pose(controls.target.x,controls.target.z,Math.max(900,camera.position.distanceTo(controls.target)),0,1),baisui:()=>{const b=G.buildings.find(b=>b.osmId===541482372);return pose(...b.center,260,60,63);},juzhilin:()=>featuredPose(),tiantai:()=>pose(773,1635,520,130,64)};fly(poses[name]());$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));syncSeg();}
+// A card flight the visitor takes over mid-air leaves no card: its selection and the view it would return to go too.
+$$('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));controls.addEventListener('gesturestart',()=>{const cardFlight=!!cameraFlight.destination?.onDone;cameraFlight.cancel();clearViews();if(cardFlight&&!$('#card').classList.contains('show')){cardToken++;deselect();homePose=null;}syncViewShift();});
+fly(townPose(),0);
 $('#north').onclick=()=>fly(pose(controls.target.x,controls.target.z,camera.position.distanceTo(controls.target),0,controls.getPolarAngle()*180/Math.PI));
 $('#zoom-in').onclick=()=>fly(pose(controls.target.x,controls.target.z,Math.max(40,camera.position.distanceTo(controls.target)*.65),heading(),controls.getPolarAngle()*180/Math.PI),450);
 $('#zoom-out').onclick=()=>fly(pose(controls.target.x,controls.target.z,Math.min(12000,camera.position.distanceTo(controls.target)*1.5),heading(),controls.getPolarAngle()*180/Math.PI),450);
 function sourceLinks(p){const links=node('div','links');for(const s of p.sources||[]){if(!/^https:\/\//.test(s.url))continue;const a=node('a','',s.name);a.href=s.url;a.target='_blank';a.rel='noopener';links.append(a);}return links;}
-function deselect(){if(selected?.el)selected.el.classList.remove('selected');selected=null;}
+function deselect(){if(selected?.el)selected.el.classList.remove('selected');selected=null;for(const b of $$('.place-item.selected'))b.classList.remove('selected');}
 let cardToken=0; // bumps whenever the card is closed or replaced, cancelling a card still waiting for its camera flight
+// Keyboard focus follows what opens and closes: into the directory, card or photo viewer as it opens, and back to the
+// control that opened it (or the nearest sensible control) as it closes, so it is never left on something hidden.
+const shown=el=>!!el?.isConnected&&!el.disabled&&!el.closest('[inert]')&&el.getClientRects().length>0&&getComputedStyle(el).visibility!=='hidden';
+const focusLost=()=>{const a=document.activeElement;return !a||a===document.body||!shown(a);};
+function focusOn(el){if(!el)return;const go=()=>{if(shown(el)&&document.activeElement!==el)el.focus({preventScroll:true});};go();if(document.activeElement!==el)requestAnimationFrame(go);}
+function restoreFocus(...cands){for(const el of cands)if(shown(el)){el.focus({preventScroll:true});return true;}return false;}
+// The control that opened the card (kept while one card replaces another) and the list row's place, for a list redrawn meanwhile.
+let cardOpener=null,cardOpenerName=null,panelOpener=null;
+function noteCardOpener(){const card=$('#card'),a=document.activeElement;if(card.classList.contains('show')||card.contains(a))return;cardOpener=a&&a!==document.body?a:null;cardOpenerName=a?.matches?.('.place-item')?a.dataset.name:null;}
 // back=false when another mobile sheet takes the card's place: the camera stays and the saved view is dropped.
-function closeCard(back=true){cardToken++;cameraFlight.cancel();deselect();conceal($('#card'));syncViewShift();if(back)flyHome();else homePose=null;}
-function setSettings(open){$('#settings').classList.toggle('collapsed',!open);$('#settings-toggle').setAttribute('aria-expanded',open);if(started)syncViewShift();}
+function closeCard(back=true){const card=$('#card'),wasShown=card.classList.contains('show'),had=card.contains(document.activeElement);cardToken++;cameraFlight.cancel();deselect();conceal(card);syncViewShift();if(back)flyHome();else homePose=null;
+ if(wasShown&&(had||focusLost())){const row=cardOpenerName&&[...$$('#place-list .place-item')].find(b=>b.dataset.name===cardOpenerName);restoreFocus(cardOpener,row,!mobile&&!$('#panel').classList.contains('closed')?$('.panel-tabs [aria-selected="true"]'):null,$('#panel-open'));}
+ cardOpener=cardOpenerName=null;}
+function setSettings(open){const s=$('#settings'),had=!open&&s.querySelector('.settings-wrap').contains(document.activeElement);s.classList.toggle('collapsed',!open);$('#settings-toggle').setAttribute('aria-expanded',open);if(started)syncViewShift();if(had)focusOn($('#settings-toggle'));}
 function closeDialog(){const d=$('#data-dialog');if(!d.open)return;d.classList.add('closing');setTimeout(()=>{d.classList.remove('closing');d.close();syncViewShift();},190);}
 function closeMobileSheets(keep){
  if(!mobile)return;
@@ -1030,20 +1060,29 @@ function cardBase(title,tag,{cat='',sub='',hero=null,featured=false}={}){
  const card=$('#card'),open=card.classList.contains('show');card.replaceChildren();card.classList.toggle('featured',featured);
  const head=node('div','card-head'),body=node('div','card-content'+(open?' swap':''));
  const close=node('button','close icon-btn');close.innerHTML=X_SVG;close.setAttribute('aria-label','关闭地点详情');close.onclick=()=>closeCard();
- head.append(node('span','tag'+(cat?' c-'+cat:''),tag),node('h2','',title));if(sub)head.append(node('p','sub',sub));
+ const h2=node('h2','',title);h2.tabIndex=-1;head.append(node('span','tag'+(cat?' c-'+cat:''),tag),h2);if(sub)head.append(node('p','sub',sub));
  body.tabIndex=0;body.setAttribute('role','region');body.setAttribute('aria-label','地点详细内容');
- if(hero)card.append(hero);card.append(close,head,body);if(!open)reveal(card);requestAnimationFrame(syncViewShift);return body;
+ const a=document.activeElement,take=a===cardOpener||card.contains(a);
+ if(hero)card.append(hero);card.append(close,head,body);if(!open)reveal(card);syncViewShift();requestAnimationFrame(syncViewShift);
+ // Focus moves to the card's title (read first, then Tab runs into its content), unless the visitor has since moved on.
+ if(take||focusLost())focusOn(h2);
+ return body;
 }
 // Photos open inside the page and swipe sideways, including embedded offline images.
-function openViewer(srcs,start,title='居之林民宿实拍',photos=[]){const v=$('#viewer'),strip=v.querySelector('.viewer-strip'),count=v.querySelector('.viewer-count');
+// The page behind it is inert while it is open (syncViewShift), so focus stays inside; closing returns it to the photo.
+function openViewer(srcs,start,title='居之林民宿实拍',photos=[],opener=document.activeElement){const v=$('#viewer'),strip=v.querySelector('.viewer-strip'),count=v.querySelector('.viewer-count'),prev=v.querySelector('.viewer-prev'),next=v.querySelector('.viewer-next');
+ if(!v.classList.contains('show'))v._opener=opener;
  v.setAttribute('aria-label',title+'照片');
  let caption=v.querySelector('.viewer-caption');if(!caption){caption=node('div','viewer-caption');caption.onclick=e=>e.stopPropagation();v.append(caption);}
  strip.replaceChildren(...srcs.map((src,i)=>{const f=node('div','slide'),img=node('img');img.src=src;img.alt=photos[i]?.alt||title+' · '+(i+1);f.append(img);return f;}));
- const at=()=>clamp(Math.round(strip.scrollLeft/Math.max(1,strip.clientWidth)),0,srcs.length-1),upd=()=>{const i=at();count.textContent=`${i+1} / ${srcs.length}`;caption.replaceChildren();const photo=photos[i];caption.hidden=!photo;if(photo){caption.append(node('span','',photo.alt));if(photo.sourceUrl)caption.append(photoCredit(photo));}};strip.onscroll=upd;
+ // ‹ and › are disabled at either end (both hidden for a single photo); one about to be disabled under focus hands it on.
+ const at=()=>clamp(Math.round(strip.scrollLeft/Math.max(1,strip.clientWidth)),0,srcs.length-1),upd=()=>{const i=at();count.textContent=`${i+1} / ${srcs.length}`;caption.replaceChildren();const photo=photos[i];caption.hidden=!photo;if(photo){caption.append(node('span','',photo.alt));if(photo.sourceUrl)caption.append(photoCredit(photo));}
+  const f=document.activeElement;prev.hidden=next.hidden=srcs.length<2;prev.disabled=i===0;next.disabled=i===srcs.length-1;
+  if(f===prev&&prev.disabled||f===next&&next.disabled)(next.disabled&&prev.disabled?v.querySelector('.viewer-close'):f===prev?next:prev).focus({preventScroll:true});};strip.onscroll=upd;
  const go=d=>strip.scrollTo({left:clamp(at()+d,0,srcs.length-1)*strip.clientWidth,behavior:reduce?'auto':'smooth'});v._go=go;
- v.querySelector('.viewer-prev').onclick=e=>{e.stopPropagation();go(-1);};v.querySelector('.viewer-next').onclick=e=>{e.stopPropagation();go(1);};v.onclick=closeViewer;
+ prev.onclick=e=>{e.stopPropagation();go(-1);};next.onclick=e=>{e.stopPropagation();go(1);};v.onclick=closeViewer;
  reveal(v);strip.scrollLeft=start*strip.clientWidth;upd();syncViewShift();v.querySelector('.viewer-close').focus({preventScroll:true});}
-function closeViewer(){conceal($('#viewer'),260);syncViewShift();}
+function closeViewer(){const v=$('#viewer'),o=v._opener,had=v.contains(document.activeElement);v._opener=null;conceal(v,260);syncViewShift();if(had||focusLost())restoreFocus(o,$('#card .card-head h2'));}
 const CAT={temple:'寺院',sight:'景点',nature:'山水景观',village:'村落地名',service:'公共服务',transport:'交通',hotel:'住宿',food:'餐饮',shop:'购物'};
 const TEL='17356648281',TEL_TEXT='173 5664 8281';
 function more(title){const d=node('details','more');d.append(node('summary','',title));return d;}
@@ -1052,19 +1091,29 @@ function photoCredit(photo){const credit=node('div','photo-credit');
  for(const [label,url]of [[photo.sourceName||'图片出处',photo.sourceUrl],[photo.license,photo.licenseUrl]]){if(!label||!url)continue;const a=node('a','',label);a.href=url;a.target='_blank';a.rel='noopener noreferrer';if(credit.lastChild?.tagName==='A')credit.append(' · ');credit.append(a);}return credit;}
 function actionBtn(cls,svg,text){const b=node('button','btn '+cls);b.type='button';b.innerHTML=svg;b.append(text);return b;}
 const ROUTE_SVG='<svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></svg>',ORBIT_SVG='<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>',PHONE_SVG='<svg viewBox="0 0 24 24"><path d="M6.5 3.5h3l1.5 4-2 1.3a11 11 0 0 0 6.2 6.2l1.3-2 4 1.5v3a2 2 0 0 1-2 2A16.5 16.5 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/></svg>';
+// 居之林's card offers its half-day route, or, while a route preview is paused, to carry on with it. The route can change
+// under an open card (the route bar's × beside a desktop card), so the offer follows it (onPlaybackChange): a stale
+// 继续路线预演 would do nothing. body is the card's .card-content.
+function routeTeaser(body){const r=G.routes?.find(r=>r.id==='juzhilin-halfday'),active=routes?.canResume?routes.active:null,old=body.querySelector('.route-teaser'),kind=active?'resume:'+active.id:r?'start':'';
+ if((old?.dataset.kind||'')===kind)return;if(!kind){old?.remove();return;}
+ const t=node('button','route-teaser'),tx=node('span','');t.type='button';t.dataset.kind=kind;t.innerHTML=ROUTE_SVG;
+ if(active){tx.append(node('b','','继续路线预演'),node('small','',active.short+' · 从刚才暂停的位置继续'));t.onclick=()=>routes.canResume&&routes.active===active?routes.startPreview():routes.open(active.id);}
+ else{tx.append(node('b','','从这里出发 · '+r.short),node('small','',`${r.duration} · 肉身宝殿 → 化城寺 → 缆车上百岁宫 · 看路线`));t.onclick=()=>routes?.open(r.id);}
+ t.append(tx);const summary=body.querySelector('.card-summary');
+ if(old){const had=document.activeElement===old;old.replaceWith(t);if(had)t.focus({preventScroll:true});}else if(summary)summary.after(t);else body.append(t);}
+function syncRouteTeaser(){const card=$('#card');if(card.classList.contains('show')&&card.classList.contains('featured'))routeTeaser(card.querySelector('.card-content'));}
 // With doFly the camera moves first; the card is only built and eased in once the flight has finished.
-function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('selected');const token=++cardToken;
+function selectPlace(p,doFly){noteCardOpener();deselect();selected=p;if(p.el)p.el.classList.add('selected');const token=++cardToken;
  const build=()=>{
  let hero=null;
  if(p.featured){hero=node('div','card-hero');// Photo sizes (all 960 wide) are set up front: in Safari a strip of still-zero-width images makes scroll-snap settle on a later photo.
  const photos=[['jzl-1',640],['jzl-2',541],['jzl-5',720],['jzl-6',540],['jzl-3',540],['jzl-4',640]],srcs=photos.map(([f])=>{const path=`media/juzhilin/${f}.jpg`;return window.__JIUHUA_MEDIA__?.[path]||path;});
- for(const[i,src]of srcs.entries()){const a=node('a');a.href=src;a.target='_blank';a.rel='noopener';a.onclick=e=>{e.preventDefault();openViewer(srcs,i);};const img=node('img');img.width=960;img.height=photos[i][1];img.src=src;img.alt='居之林民宿实拍';img.loading='lazy';a.append(img);hero.append(a);}}
+ for(const[i,src]of srcs.entries()){const a=node('a');a.href=src;a.target='_blank';a.rel='noopener';a.onclick=e=>{e.preventDefault();openViewer(srcs,i,undefined,undefined,a);};const img=node('img');img.width=960;img.height=photos[i][1];img.src=src;img.alt='居之林民宿实拍';img.loading='lazy';a.append(img);hero.append(a);}}
  const placePhotos=[...(p.photos||[]),...(p.viewing?.photos||[])];
  if(placePhotos.length){hero=node('div','card-hero');const photos=placePhotos,srcs=photos.map(photo=>window.__JIUHUA_MEDIA__?.[photo.src]||photo.src);
- for(const [i,photo]of photos.entries()){const a=node('a');a.href=srcs[i];a.setAttribute('aria-label',photo.alt+'，点开放大');a.onclick=e=>{e.preventDefault();openViewer(srcs,i,p.n,photos);};const img=node('img');img.src=srcs[i];img.width=photo.width;img.height=photo.height;img.alt=photo.alt;img.loading='lazy';a.append(img);if(photo.takenAt)a.append(node('span','photo-date',photo.takenAt.slice(0,4)+'年实拍 · 点开放大'));hero.append(a);}}
+ for(const [i,photo]of photos.entries()){const a=node('a');a.href=srcs[i];a.setAttribute('aria-label',photo.alt+'，点开放大');a.onclick=e=>{e.preventDefault();openViewer(srcs,i,p.n,photos,a);};const img=node('img');img.src=srcs[i];img.width=photo.width;img.height=photo.height;img.alt=photo.alt;img.loading='lazy';a.append(img);if(photo.takenAt)a.append(node('span','photo-date',photo.takenAt.slice(0,4)+'年实拍 · 点开放大'));hero.append(a);}}
  const card=cardBase(p.displayName||(p.featured?p.shortName:p.n),p.featured?'精选民宿 · 实拍建模':CAT[p.category]||'地点',{cat:p.category,hero,featured:!!p.featured});
- const chips=node('div','chips');if(p.address||p.zone)chips.append(node('span','',p.address||p.zone));if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(hAt(p.x,p.z))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));const summary=node('div','card-summary');summary.append(chips);card.append(summary);if(p.featured&&G.routes?.some(r=>r.id==='juzhilin-halfday')){const r=G.routes.find(r=>r.id==='juzhilin-halfday'),t=node('button','route-teaser');t.type='button';t.innerHTML=ROUTE_SVG;const tx=node('span','');tx.append(node('b','','从这里出发 · '+r.short),node('small','',`${r.duration} · 肉身宝殿 → 化城寺 → 缆车上百岁宫 · 看路线`));t.append(tx);t.onclick=()=>routes?.open(r.id);card.append(t);}
- if(p.featured&&routes?.canResume){const resume=card.querySelector('.route-teaser')||node('button','route-teaser');resume.type='button';resume.innerHTML=ROUTE_SVG;const text=node('span','');text.append(node('b','','继续路线预演'),node('small','',routes.active.short+' · 从刚才暂停的位置继续'));resume.append(text);resume.onclick=()=>routes.startPreview();if(!resume.parentNode)card.append(resume);}
+ const chips=node('div','chips');if(p.address||p.zone)chips.append(node('span','',p.address||p.zone));if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(hAt(p.x,p.z))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));const summary=node('div','card-summary');summary.append(chips);card.append(summary);if(p.featured)routeTeaser(card);
  if(p.featured)card.append(node('p','lead','三层退台的山地民宿：屋顶露台远眺九华诸峰，二层木平台与罗汉松小院，门前停车场带充电桩，挡墙上方是挂满灯笼的大松树。'));
  // Why go first, then the story with how each paragraph should be read; where a story exists the building notes move into 资料与依据.
  if(p.highlight){const h=node('p','highlight');h.append(node('b','','看点'),p.highlight);card.append(h);}
@@ -1085,10 +1134,11 @@ function selectPlace(p,doFly){deselect();selected=p;if(p.el)p.el.classList.add('
  $$('.place-item').forEach(b=>b.classList.toggle('selected',b.dataset.name===p.n));
  if(!doFly){routes?.stopPreview();cameraFlight.cancel();build();return;}
  const card=$('#card');if(card.classList.contains('show'))conceal(card,440);saveHome();clearViews();
- const to=p.featured?featuredPose():placePose(p);
- fly(to,flightMs(to),()=>{if(token!==cardToken||selected!==p)return;card.classList.add('arrive');build();clearTimeout(card._arrive);card._arrive=setTimeout(()=>card.classList.remove('arrive'),1600);},150);
+ // The flight hint names the place while the camera travels (syncViewShift shows and hides it with the flight).
+ const to=p.featured?featuredPose():placePose(p);$('#flight-hint .fh-name').textContent=p.displayName||(p.featured?p.shortName:p.n);
+ fly(to,flightMs(to),()=>{if(token!==cardToken||selected!==p){syncViewShift();return;}card.classList.add('arrive');build();clearTimeout(card._arrive);card._arrive=setTimeout(()=>card.classList.remove('arrive'),1600);},150);
 }
-function selectBuilding(b){routes?.stopPreview();cameraFlight.cancel();cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint',temple=b.style==='temple';
+function selectBuilding(b){noteCardOpener();routes?.stopPreview();cameraFlight.cancel();cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint',temple=b.style==='temple';
  const card=cardBase(temple?(b.name||b.precinct||b.templeGuess||'寺院建筑'):'民居建筑',temple?'寺院建筑':'街区建筑',{cat:temple?'temple':'village',sub:b.precinct?`${b.precinct} 寺院范围内`:''});
  const chips=node('div','chips');chips.append(node('span','',`占地约 ${Math.round(b.area)} m²`),node('span','',`${b.levels||'-'} 层`),node('span','',`墙高 ${b.wallHeight.toFixed(1)} m`));card.append(chips);
  const d=more('外观与数据依据');d.append(node('p','',ml?'平面轮廓来自影像识别，可能包含识别误差。':'平面形状与朝向来自地图记录。'));
@@ -1106,31 +1156,65 @@ function onMapTap(e){
 }
 
 function filtered(p,query=search){return(category==='all'||(GROUPS[category]||[category]).includes(p.category))&&(!query||p.searchable&&(p.n+' '+(p.displayName||'')+' '+(p.address||'')+' '+(p.aliases||[]).join(' ')+' '+(p.viewing?.name||'')).includes(query));}
-function renderList(){const list=$('#place-list');list.replaceChildren();const found=places.filter(p=>p.searchable&&(filtered(p)||p===featured&&category==='all'&&!search)).sort((a,b)=>(b===featured)-(a===featured)||a.p-b.p||a.n.localeCompare(b.n,'zh-CN'));
+// Rows only ease in (.animate) when a tab or category change brings a new list; typing re-lists them in place.
+function renderList(animate){const list=$('#place-list');list.classList.toggle('animate',!!animate);list.replaceChildren();const found=places.filter(p=>p.searchable&&(filtered(p)||p===featured&&category==='all'&&!search)).sort((a,b)=>(b===featured)-(a===featured)||a.p-b.p||a.n.localeCompare(b.n,'zh-CN'));
  $('#list-summary').textContent=`${found.length} 个结果 · 可搜寺庙、景点、村名与公共设施`;
  const shown=found.slice(0,search?400:220);
- shown.forEach((p,i)=>{const b=node('button','place-item'+(p===featured?' featured':''));b.style.animationDelay=Math.min(i,14)*16+'ms';b.dataset.name=p.n;b.type='button';b.append(node('span','pi-icon c-'+p.category,p===featured?'宿':icon[p.category]||'·'));const t=node('span','pi-text');t.append(node('strong','',p.displayName||(p===featured?p.shortName:p.n)),node('small',estimated(p)?'estimate':'',p===featured?`精选民宿 · ${p.address}`:[CAT[p.category],p.highlight||(p.viewing?`可远眺${p.viewing.name}`:p.zone)].filter(Boolean).join(' · ')+(estimated(p)?' · 位置待核':'')));b.append(t);b.onclick=()=>selectPlace(p,true);list.append(b);});
+ shown.forEach((p,i)=>{const b=node('button','place-item'+(p===featured?' featured':'')+(p===selected?' selected':''));if(animate)b.style.animationDelay=Math.min(i,14)*16+'ms';b.dataset.name=p.n;b.type='button';b.append(node('span','pi-icon c-'+p.category,p===featured?'宿':icon[p.category]||'·'));const t=node('span','pi-text');t.append(node('strong','',p.displayName||(p===featured?p.shortName:p.n)),node('small',estimated(p)?'estimate':'',p===featured?`精选民宿 · ${p.address}`:[CAT[p.category],p.highlight||(p.viewing?`可远眺${p.viewing.name}`:p.zone)].filter(Boolean).join(' · ')+(estimated(p)?' · 位置待核':'')));b.append(t);b.onclick=()=>selectPlace(p,true);list.append(b);});
  if(found.length>shown.length)list.append(node('p','empty',`另有 ${found.length-shown.length} 个点位未列出，请输入名称、门牌或村名缩小范围。`));
  if(!found.length)list.append(node('p','empty','没有匹配的地点。可以搜寺庙、景点、村名或车站、公厕、停车场，例如“化城寺”“凤凰松”“车站”。'));
 }
-$('#search').oninput=e=>{search=e.target.value.trim();renderList();};$$('[data-category]').forEach(b=>b.onclick=()=>{category=b.dataset.category;$$('[data-category]').forEach(x=>x.classList.toggle('active',x===b));renderList();});renderList();
-function setTab(tab){$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';$('#tab-guide').hidden=tab!=='guide';const a=$('.panel-tabs .active'),bar=$('.panel-tabs');bar.style.setProperty('--tab-x',a.offsetLeft+'px');bar.style.setProperty('--tab-w',a.offsetWidth+'px');}
-function openPanel(tab){routes?.stopPreview();cameraFlight.cancel();if(tab)setTab(tab);closeMobileSheets('directory');$('#panel').classList.remove('closed');resize();requestAnimationFrame(()=>setTab($('.panel-tabs .active').dataset.tab));}
+// The search box answers every key at once; the list (up to 400 rows) and the map labels follow ~90 ms after the last one.
+let searchTimer=0;const applySearch=()=>{clearTimeout(searchTimer);search=$('#search').value.trim();labelsDirty=true;};
+$('#search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{applySearch();renderList();},90);};$$('[data-category]').forEach(b=>b.onclick=()=>{applySearch();category=b.dataset.category;$$('[data-category]').forEach(x=>x.classList.toggle('active',x===b));renderList(true);});renderList();
+function syncTab(){indicator($('.panel-tabs'),$('.panel-tabs .active'),'--tab-x','--tab-w');}
+// ARIA tabs with a roving tab stop: Tab reaches the selected tab only, the arrow keys (and Home / End) choose another.
+function setTab(tab){const was=$('.panel-tabs .active')?.dataset.tab;$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';$('#tab-guide').hidden=tab!=='guide';if(tab==='places'&&was!=='places')renderList(true);syncTab();}
+// The desktop card covers the column the panel lives in, so asking for the panel (a route, the route bar's 行程) puts the
+// card, or a card still on its way, aside first. Phones do the same through closeMobileSheets.
+// Focus goes into the panel: the search box for 找地点 (the dock's search field promises one, and on a phone the keyboard
+// comes up with it), an open route's page, or else the selected tab.
+function openPanel(tab){const panel=$('#panel'),a=document.activeElement;if(panel.classList.contains('closed')&&!panel.contains(a))panelOpener=a!==document.body?a:null;
+ routes?.stopPreview();if(!mobile&&($('#card').classList.contains('show')||cameraFlight.destination?.onDone))closeCard(false);cameraFlight.cancel();if(tab)setTab(tab);closeMobileSheets('directory');panel.classList.remove('closed');resize();requestAnimationFrame(syncTab);
+ const pane=$('.tab-pane:not([hidden])');focusOn(pane?.id==='tab-places'?$('#search'):pane?.id==='tab-routes'&&!$('#route-detail').hidden?$('#route-detail'):$('.panel-tabs [aria-selected="true"]'));}
 $$('.panel-tabs [data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));setTab('routes');setupGuide(G,$('#guide'));
-// Closing the panel on a route's page leaves the route: its bar goes and the map returns to the opening view. A paused
-// preview is kept, to be resumed from the route bar.
-$('#panel-close').onclick=()=>{const leave=routes?.active&&!routes.canResume&&!$('#tab-routes').hidden;$('#panel').classList.add('closed');resize();if(leave){routes.close();view('town');}};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');if(mobile)$('#panel').classList.add('closed');
-$('#settings-toggle').onclick=()=>{const open=$('#settings').classList.contains('collapsed');if(open)closeMobileSheets('settings');setSettings(open);};if(mobile)setSettings(false);
+$('.panel-tabs').addEventListener('keydown',e=>{const tabs=$$('.panel-tabs [data-tab]'),i=tabs.indexOf(document.activeElement),k={ArrowLeft:i-1,ArrowRight:i+1,Home:0,End:tabs.length-1}[e.key];if(i<0||k===undefined)return;e.preventDefault();const t=tabs[(k+tabs.length)%tabs.length];setTab(t.dataset.tab);t.focus();});
+// Putting the panel away (its ×, a drag down, Esc) hands focus back to what opened it, or to the dock or the route bar.
+function hidePanel(){const panel=$('#panel'),had=panel.contains(document.activeElement);panel.classList.add('closed');$('#search').blur();resize();return had;}
+function panelFocusBack(had){if(had||focusLost())restoreFocus(panelOpener,$('#panel-open'),$('#route-hud .rh-list'));panelOpener=null;}
+// Closing the panel with its × on a route's page leaves the route: its bar goes and the map returns to the opening view.
+// A paused preview is kept, to be resumed from the route bar; a drag down (sheet-drag.js) only puts the sheet away.
+$('#panel-close').onclick=()=>{const leave=routes?.active&&!routes.canResume&&!$('#tab-routes').hidden,had=hidePanel();if(leave){routes.close();view('town');}panelFocusBack(had);};$('#panel-open').onclick=()=>openPanel('places');$('#routes-open').onclick=()=>openPanel('routes');$('#guide-open').onclick=()=>openPanel('guide');if(mobile)$('#panel').classList.add('closed');
+// Layers start folded everywhere: a phone sheet or, on desktop, a popover beside the rail.
+$('#settings-toggle').onclick=()=>{const open=$('#settings').classList.contains('collapsed');if(open)closeMobileSheets('settings');setSettings(open);};setSettings(false);
 $('#featured-cta').onclick=()=>selectPlace(featured,true);
-// The part of the map left uncovered, for framing a route: below the top bar or the route bar and above a phone's sheet (or
-// left of a side sheet), or beside the open desktop panel. The view shift centres the map in the same area.
-function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),open=!p.classList.contains('closed'),hud=$('#route-hud');let top=0,bottom=h,left=0,right=w;
- if(mobile){top=document.body.classList.contains('map-chrome-hidden')?0:$('.viewbar').getBoundingClientRect().bottom;if(open){if(p.offsetWidth>w*.6)bottom=p.offsetTop;else right=p.offsetLeft;}}else if(open)right=w-340;
+// The part of the map left uncovered, for framing a route: below the view bar or the route bar and above a phone's sheet
+// (or left of a side sheet), or right of the desktop column (panel or card) and left of the tool rail, above the credits.
+// A landscape phone with no side sheet keeps its route clear of the rail too. The view shift centres the map in the same
+// area (the rail aside, which it leaves be). offset* is where a bar or sheet rests, whatever it is sliding through.
+function visibleRect(){const w=innerWidth,h=innerHeight,p=$('#panel'),card=$('#card'),open=!p.classList.contains('closed'),hud=$('#route-hud'),rail=$('.rail'),tools=rail.querySelector('.map-actions');let top=document.body.classList.contains('map-chrome-hidden')?0:$('.viewbar').getBoundingClientRect().bottom,bottom=h,left=0,right=w;
+ const railOn=!!tools?.offsetWidth&&getComputedStyle(tools).visibility!=='hidden';
+ if(mobile){if(open){if(p.offsetWidth>w*.6)bottom=p.offsetTop;else right=p.offsetLeft;}else if(w>h&&railOn)right=rail.offsetLeft-8;}
+ else{left=columnEdge(card.classList.contains('show')?card:open?p:null);if(railOn)right=rail.offsetLeft-12;const meta=$('.map-meta');if(meta.offsetHeight)bottom=Math.min(h,meta.offsetTop-8);}
  if(!hud.hidden&&hud.offsetParent)top=Math.max(top,hud.getBoundingClientRect().bottom);
  return{left,top,right,bottom,shiftX:shiftTarget.x,shiftY:shiftTarget.y};}
-routes=setupRoutes({routes:G.routes||[],scene,world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,onFrame:f=>frameHooks.push(f),cancelFlight:()=>cameraFlight.cancel(),
- onPlaybackChange:()=>{if(started)syncViewShift();},
- closeSheetsForRoute:()=>{closeCard(false);if(mobile)$('#panel').classList.add('closed');resize();}});
+// What lies over the map as drawn (transforms included, so the rail and credits row where route mode moves them), for the
+// route's stop names to step aside from: every piece of chrome still showing, not only the edges of visibleRect().
+const ROUTE_COVERS='.brand,.viewbar,.rail>*,.dock,.map-meta>*,#route-hud,#flight-hint,.settings-wrap';
+function routeCovers(){const out=[];for(const el of $$(ROUTE_COVERS)){if(!el.offsetWidth||el.closest('.is-hidden')||getComputedStyle(el).visibility==='hidden')continue;const r=el.getBoundingClientRect();out.push([r.left,r.top,r.right,r.bottom]);}return out;}
+// Leaving or starting over a route stops the camera where it is, but a card's flight is left to land: the card has its own
+// bookkeeping, and a preview that starts closes it anyway (closeSheetsForRoute).
+routes=setupRoutes({routes:G.routes||[],scene,world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,covers:routeCovers,onFrame:f=>frameHooks.push(f),cancelFlight:()=>{if(!cameraFlight.destination?.onDone)cameraFlight.cancel();},
+ onPlaybackChange:()=>{if(started)syncViewShift();syncRouteTeaser();},
+ // a preview started from the sheet or card puts them away; keyboard focus moves on to the route bar's play button
+ closeSheetsForRoute:()=>{const a=document.activeElement,had=mobile&&!$('#panel').classList.contains('closed')&&$('#panel').contains(a)||$('#card').classList.contains('show')&&$('#card').contains(a);closeCard(false);if(mobile)$('#panel').classList.add('closed');resize();if(had)focusOn($('#route-hud .rh-play'));}});
+// Leaving a route from its bar also leaves its close-up: back to 九华街, as the panel's × does. A card open beside the bar
+// (desktop), or one on its way, keeps the camera on its place instead, and closing that card is what then returns to 九华街.
+$('#route-hud .rh-close').onclick=()=>{const had=$('#route-hud').contains(document.activeElement),cardShown=$('#card').classList.contains('show'),cardFlight=!!cameraFlight.destination?.onDone;routes.close();
+ if(cardShown||cardFlight)homePose={...townPose(),view:'town'};else view('town');
+ if(had||focusLost())restoreFocus(cardShown?$('#card .card-head h2'):null,cardFlight?cardOpener:null,!mobile&&!$('#panel').classList.contains('closed')?$('#route-list .route-card'):null,$('#routes-open'),$('#panel-open'));};
+// Phone sheets drag (sheet-drag.js); each change of their size re-centres the map.
+setupSheetDrag({compact:compactViewport,closePanel:()=>panelFocusBack(hidePanel())});addEventListener('sheetchange',()=>syncViewShift());
 $('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>{treesChoice=e.target.checked;applyTrees();};$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
 $('#height').oninput=e=>{const old=EX;EX=+e.target.value;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=EX;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`视觉增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(EX-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(EX-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*EX;for(const q of extraLabels)q.label.position.y=(q.top+4)*EX;};
 const S=G.stats,ST=S.buildingStyles||{};
@@ -1145,71 +1229,244 @@ const dataText=`<p>本次更新：2026 年 9 月 28 日。覆盖约 ${(W/1000).t
 <h3>景区交通（官网 ${G.transit?.retrieved||''}）</h3>${(G.transit?.routes||[]).map(r=>`<p><b>${r.name}</b>　${r.hours}<br><small>${r.stops.join(' → ')}${r.note?'。'+r.note:''}</small></p>`).join('')}<p>${(G.transit?.cableways||[]).map(c=>`${c.name} ${c.hours}`).join('　·　')}<br><small>旅游咨询 ${G.transit?.hotlines?.['旅游咨询投诉']||''} · 紧急救援 ${G.transit?.hotlines?.['紧急救援']||''} · 尚无公开坐标的站点：${(G.transit?.unlocatedStops||[]).join('、')}</small></p>
 <h3>坐标与数据质量</h3><p>去哪儿、360 地图等平台的 GCJ-02 坐标均用 coordtransform 换算为 WGS84，原始坐标保存在数据中；每个数据集都经过独立抽检。维基数据等开放数据中约 1 km 偏移的寺庙点（百度坐标误标为 WGS84）未用于定位。地点定位依据可在简介卡的“资料与依据”中查看。</p>
 <h3>资料与许可</h3><p><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors / ODbL</a> · <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">Overture Maps：建筑 ODbL；地点 CDLA-Permissive 2.0</a> · <a href="https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model" target="_blank" rel="noopener">Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018，由 ESA 在 Copernicus 计划下提供</a> · <a href="https://www.jiuhuashan.gov.cn/file_cz/54/202506/202506269aaa0b14711f440284eefd14e047a66e.pdf" target="_blank" rel="noopener">九华山官方地质公园规划</a> · <a href="https://doi.org/10.5194/essd-16-5357-2024" target="_blank" rel="noopener">3D-GloBFP 建筑高度（Che 等 2024，CC BY 4.0）</a>，仅用于同片区内楼层高低排序 · 去哪儿、360 地图公开页面（逐条链接见地点卡片）</p><p>补充建筑由 Qian Shi 等的东亚建筑数据经 Overture 提供，原始数据为 <a href="https://doi.org/10.5281/zenodo.8174931" target="_blank" rel="noopener">CC BY 4.0</a>；本项目做了裁剪、去重与屋顶重建。官方照片与公开照片仅用于归纳外观规律，未作为贴图。</p>`;
-$('#data-content').innerHTML=dataText;$('#credit-data').onclick=$('#credit-mobile').onclick=()=>{closeMobileSheets('data');$('#data-dialog').showModal();syncViewShift();};$('#data-close').onclick=closeDialog;$('#data-dialog').onclick=e=>{if(e.target===$('#data-dialog'))closeDialog();};$('#data-dialog').addEventListener('close',()=>{if(started)syncViewShift();});
+$('#data-content').innerHTML=dataText;let dataOpener=null;$('#credit-data').onclick=$('#credit-mobile').onclick=e=>{dataOpener=e.currentTarget;closeMobileSheets('data');$('#data-dialog').showModal();syncViewShift();};$('#data-close').onclick=closeDialog;$('#data-dialog').onclick=e=>{if(e.target===$('#data-dialog'))closeDialog();};
+// The browser hands focus back to the credits button as the dialog closes, but on a phone the credits row is still
+// hidden at that moment (the open dialog hides the map chrome), so focus falls to the page; once the row is back, it goes there.
+$('#data-dialog').addEventListener('close',()=>{if(!started)return;syncViewShift();if(focusLost())restoreFocus(dataOpener,$('#credit-mobile'),$('#credit-data'));dataOpener=null;});
+// PNG export: the 3D frame, then each label painted from its computed style (so the image follows style.css), the brand
+// box and the credits. Canvas shadow blur and offsets ignore the context scale, hence the k factor.
+const cssToken=k=>getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const COLOR=/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi;
+function roundPath(c,x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h/2));c.beginPath();if(c.roundRect)c.roundRect(x,y,w,h,r);else{c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}}
+// A CSS linear-gradient (first and last stop, its angle) or plain background colour; null when transparent.
+function cssFill(c,image,color,r){const stops=image&&image!=='none'&&image.match(COLOR);
+ if(stops&&stops.length>1){const a=(+(image.match(/([\d.]+)deg/)?.[1]??180))*Math.PI/180,dx=Math.sin(a),dy=-Math.cos(a),l=(Math.abs(r.width*dx)+Math.abs(r.height*dy))/2,cx=r.x+r.width/2,cy=r.y+r.height/2;
+  const g=c.createLinearGradient(cx-dx*l,cy-dy*l,cx+dx*l,cy+dy*l);g.addColorStop(0,stops[0]);g.addColorStop(1,stops.at(-1));return g;}
+ return !color||/^transparent$|^rgba\(.*,\s*0\)$/.test(color)?null:color;}
+// Canvas letter-spacing is not in every browser yet, so glyphs are set one by one.
+function spacedText(c,text,x,y,ls){for(const ch of text){c.fillText(ch,x,y);x+=c.measureText(ch).width+ls;}return x;}
+const spacedWidth=(c,text,ls)=>c.measureText(text).width+[...text].length*ls;
+function paintBox(c,cs,r,k){const rad=parseFloat(cs.borderTopLeftRadius)||0,fill=cssFill(c,cs.backgroundImage,cs.backgroundColor,r),bw=parseFloat(cs.borderTopWidth)||0;
+ const shadows=cs.boxShadow==='none'?[]:cs.boxShadow.split(/,(?![^(]*\))/).filter(s=>!/inset/.test(s)).map(s=>({col:s.match(COLOR)?.[0]||'transparent',v:s.replace(COLOR,'').trim().split(/\s+/).map(parseFloat)}));
+ for(const s of shadows)if(!s.v[2]&&s.v[3]>0){roundPath(c,r.x+s.v[0]-s.v[3],r.y+s.v[1]-s.v[3],r.width+2*s.v[3],r.height+2*s.v[3],rad+s.v[3]);c.fillStyle=s.col;c.fill();} // rings
+ if(fill){const soft=shadows.filter(s=>s.v[2]>0).sort((a,b)=>b.v[2]-a.v[2])[0];c.save();if(soft){c.shadowColor=soft.col;c.shadowBlur=soft.v[2]*k*.8;c.shadowOffsetX=soft.v[0]*k;c.shadowOffsetY=soft.v[1]*k;}
+  roundPath(c,r.x,r.y,r.width,r.height,rad);c.fillStyle=fill;c.fill();c.restore();}
+ if(bw&&cs.borderTopStyle!=='none'&&cssFill(c,'none',cs.borderTopColor,r)){c.lineWidth=bw;c.strokeStyle=cs.borderTopColor;c.setLineDash(cs.borderTopStyle==='dashed'?[3,2]:[]);roundPath(c,r.x+bw/2,r.y+bw/2,r.width-bw,r.height-bw,rad-bw/2);c.stroke();c.setLineDash([]);}}
+function paintContent(c,parent,k){for(const n of parent.childNodes){
+ if(n.nodeType===3){const t=n.textContent;if(!t.trim())continue;const cs=getComputedStyle(parent),range=document.createRange();range.selectNodeContents(n);const tr=range.getBoundingClientRect(),ls=parseFloat(cs.letterSpacing)||0,y=tr.y+tr.height/2;
+  c.font=`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;c.textAlign='left';c.textBaseline='middle';
+  c.fillStyle=cs.color;
+  // a text-shadow (the village names' white halo) as two soft glows under the glyphs
+  if(cs.textShadow!=='none'){c.save();c.shadowColor='rgba(255,255,255,.95)';for(const blur of[3,9]){c.shadowBlur=blur*k;spacedText(c,t,tr.x,y,ls);}c.restore();}
+  spacedText(c,t,tr.x,y,ls);continue;}
+ if(n.nodeType!==1)continue;const cs=getComputedStyle(n);if(cs.display==='none'||cs.visibility==='hidden'||+cs.opacity<.05)continue;const r=n.getBoundingClientRect();
+ if(n.tagName.toLowerCase()==='svg'){const vb=n.viewBox?.baseVal,path=n.querySelector('path');if(path&&vb?.width){c.save();c.translate(r.x,r.y);c.scale(r.width/vb.width,r.height/vb.height);c.fillStyle=cs.fill;c.fill(new Path2D(path.getAttribute('d')));c.restore();}continue;}
+ paintBox(c,cs,r,k);paintContent(c,n,k);}}
+function paintLabel(c,el,k,bottom){const b=el.querySelector('button'),cs=getComputedStyle(b),r=b.getBoundingClientRect();
+ if(!r.width||cs.visibility==='hidden'||r.x<0||r.y<0||r.right>innerWidth||r.bottom>bottom)return;
+ // stem and ground dot (route-stop stems fade when veiled; others only have the entrance fade, ignored here). A place
+ // label's stem is a leader from its point (the bottom centre of the label box) to the pill's nearest edge.
+ const i=el.querySelector('i'),is=i&&getComputedStyle(i);
+ if(is&&is.display!=='none'){const as=getComputedStyle(i,'::after'),d=parseFloat(as.width)||0;c.save();
+  let cx,cy;
+  if(el.classList.contains('pin')){const er=el.getBoundingClientRect();cx=er.x+er.width/2;cy=er.bottom;const tx=clamp(cx,r.x,r.right),ty=clamp(cy,r.y,r.bottom);
+   if(Math.hypot(tx-cx,ty-cy)>=3){const lw=parseFloat(is.height)||1.5,halo=is.boxShadow.match(/rgba?\([^)]*\)/);c.lineCap='round';
+    if(halo){c.strokeStyle=halo[0];c.lineWidth=lw+1.5;c.beginPath();c.moveTo(cx,cy);c.lineTo(tx,ty);c.stroke();}
+    c.strokeStyle=is.backgroundColor;c.lineWidth=lw;c.beginPath();c.moveTo(cx,cy);c.lineTo(tx,ty);c.stroke();}}
+  else{const ir=i.getBoundingClientRect();c.globalAlpha=el.classList.contains('route-stop')?+is.opacity:1;
+   c.fillStyle=cssFill(c,is.backgroundImage,is.backgroundColor,ir)||'transparent';c.fillRect(ir.x,ir.y,ir.width,ir.height);cx=ir.x+ir.width/2;cy=ir.bottom-(parseFloat(as.bottom)||0)-d/2;}
+  if(d){const ring=as.boxShadow.match(/(rgba?\([^)]*\)) 0px 0px 0px ([\d.]+)px/);
+   if(ring){c.fillStyle=ring[1];c.beginPath();c.arc(cx,cy,d/2+ +ring[2],0,7);c.fill();}c.fillStyle=as.backgroundColor;c.beginPath();c.arc(cx,cy,d/2,0,7);c.fill();}
+  c.restore();}
+ paintBox(c,cs,r,k);
+ const dot=getComputedStyle(b,'::before'),d=parseFloat(dot.width)||0;
+ if(d&&dot.display!=='none'&&dot.content!=='none'){c.fillStyle=dot.backgroundColor;c.beginPath();c.arc(r.x+(parseFloat(cs.borderLeftWidth)||0)+(parseFloat(cs.paddingLeft)||0)+d/2,r.y+r.height/2,d/2,0,7);c.fill();}
+ paintContent(c,b,k);}
 $('#capture').onclick=()=>{
- camera.updateMatrixWorld();updateLabels();renderer.render(scene,camera);routes?.updateLabels(performance.now());renderLabelLayer();
- const out=document.createElement('canvas');out.width=renderer.domElement.width;out.height=renderer.domElement.height;
- const c=out.getContext('2d');c.fillStyle='#dce5df';c.fillRect(0,0,out.width,out.height);c.drawImage(renderer.domElement,0,0);
- const ratio=out.width/innerWidth;c.scale(ratio,ratio);
- for(const p of places){if(!p.label?.parent||!p.label.visible)continue;const b=p.el.querySelector('button'),r=b.getBoundingClientRect();
-  if(r.width===0||r.x<0||r.y<0||r.right>innerWidth||r.bottom>innerHeight-44)continue;
-  c.fillStyle=p.featured?'#b5332af2':p.p===1?'#f7ecd4f2':'#fbfaf6ee';c.strokeStyle=estimated(p)?'#9c916b':'#c8cfbc';
-  c.setLineDash(estimated(p)?[3,2]:[]);c.beginPath();c.roundRect(r.x,r.y,r.width,r.height,r.height/2);c.fill();c.stroke();c.setLineDash([]);
-  c.fillStyle=p.featured?'#fff':'#1f3a31';c.font=(p.p===1||p.featured?'600 12px':'11px')+' "PingFang SC",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText(p.displayName||p.shortName||p.n,r.x+r.width/2,r.y+r.height/2);
- }
- c.textAlign='left';c.textBaseline='alphabetic';c.fillStyle='#fafbf3ed';c.fillRect(24,24,290,81);c.fillStyle='#253e35';c.font='600 24px "PingFang SC",sans-serif';c.fillText('九华山 · 三维实地导览',38,57);c.font='11px sans-serif';c.fillText(`${G.stats.buildings} 建筑轮廓 · ${G.stats.places} 地点 · 2026.09.27`,38,82);
- c.fillStyle='#fafbf3eb';c.fillRect(0,innerHeight-42,innerWidth,42);c.fillStyle='#52655a';c.font='10px sans-serif';
- c.fillText('© OpenStreetMap contributors · Overture Maps Foundation · Copernicus DEM (ESA) · 去哪儿/360地图/OSM 公开地点',12,innerHeight-25);
- c.fillText('补充轮廓：Qian Shi 等 / CC BY 4.0 · 建筑楼高、立面及植被为近似复原',12,innerHeight-9);
+ // At least the screen's pixel ratio (up to 2), so labels and text stay sharp when the 3D frame runs at a lowered resolution.
+ const vw=innerWidth,vh=innerHeight,k=Math.min(2,Math.max(devicePixelRatio||1,renderer.domElement.width/vw)),out=document.createElement('canvas');out.width=Math.round(vw*k);out.height=Math.round(vh*k);
+ const c=out.getContext('2d'),sans=cssToken('--sans')||'sans-serif',serif=cssToken('--serif')||'serif',ink=cssToken('--ink')||'#1c2a25',muted=cssToken('--muted')||'#5c6962';
+ // Credits, wrapped to the image width, in a rice-paper strip along the bottom.
+ c.font=`10.5px ${sans}`;const lines=[];
+ for(const group of[['© OpenStreetMap contributors','Overture Maps Foundation','Copernicus DEM (ESA)','去哪儿/360地图/OSM 公开地点'],['补充轮廓：Qian Shi 等 / CC BY 4.0','建筑楼高、立面及植被为近似复原']]){let line='';
+  for(const s of group){const t=line?line+' · '+s:s;if(line&&c.measureText(t).width>vw-24){lines.push(line);line=s;}else line=t;}lines.push(line);}
+ const footH=12+lines.length*15;
+ // Brand box as on the page: rice paper, the vermilion seal (九 over 华), the serif wordmark, subtitle and data line.
+ const m=vw<600?12:24,pad=15,seal=44,tx=m+pad+seal+13,title='九华山',sub='三维实地导览 · 走近九华',meta=`${G.stats.buildings} 建筑轮廓 · ${G.stats.places} 地点 · 2026.09.27`;
+ c.font=`600 26px ${serif}`;const tw=spacedWidth(c,title,3.64);c.font=`12.5px ${sans}`;const sw=spacedWidth(c,sub,.75);c.font=`11px ${sans}`;const mw=c.measureText(meta).width;
+ const bw=tx-m+Math.max(tw,sw,mw)+20,bh=pad*2+66;
+ // The image has none of the page's chrome, only its own brand box and credits strip: labels are placed clear of those;
+ // the next frame places them for the screen again.
+ camera.updateMatrixWorld();updateLabels([[m,m,m+bw,m+bh],[0,vh-footH,vw,vh]]);renderer.render(scene,camera);routes?.updateLabels(performance.now());renderLabelLayer();labelsDirty=true;
+ c.fillStyle='#dce5df';c.fillRect(0,0,out.width,out.height);c.drawImage(renderer.domElement,0,0,out.width,out.height);c.scale(k,k);
+ for(const el of[...labels.domElement.children].filter(e=>e.classList.contains('maplabel')&&e.style.display!=='none').sort((a,b)=>(parseInt(getComputedStyle(a).zIndex)||0)-(parseInt(getComputedStyle(b).zIndex)||0)))paintLabel(c,el,k,vh-footH);
+ c.save();c.shadowColor='rgba(20,32,27,.24)';c.shadowBlur=20*k;c.shadowOffsetY=6*k;roundPath(c,m,m,bw,bh,18);c.fillStyle='rgba(251,249,243,.96)';c.fill();c.restore();
+ c.lineWidth=1;c.strokeStyle='rgba(28,42,37,.09)';roundPath(c,m+.5,m+.5,bw-1,bh-1,17.5);c.stroke();
+ const sx=m+pad,sy=m+pad,zhu=(cssToken('--zhu-fill').match(COLOR)||['#c24536','#a8322a']);
+ c.fillStyle=cssFill(c,`linear-gradient(160deg, ${zhu[0]}, ${zhu.at(-1)})`,null,{x:sx,y:sy,width:seal,height:seal});roundPath(c,sx,sy,seal,seal,10);c.fill();
+ c.lineWidth=2;c.strokeStyle='#b23a2d';roundPath(c,sx+1,sy+1,seal-2,seal-2,9);c.stroke();c.lineWidth=1;c.strokeStyle='rgba(251,241,230,.55)';roundPath(c,sx+2.5,sy+2.5,seal-5,seal-5,7.5);c.stroke();
+ c.fillStyle='#fbf1e6';c.font=`600 16px ${serif}`;c.textAlign='center';c.textBaseline='middle';c.fillText('九',sx+seal/2,sy+seal/2-8.5);c.fillText('华',sx+seal/2,sy+seal/2+8.5);
+ c.textAlign='left';c.textBaseline='alphabetic';c.fillStyle=ink;c.font=`600 26px ${serif}`;spacedText(c,title,tx,sy+25,3.64);
+ c.fillStyle=muted;c.font=`12.5px ${sans}`;spacedText(c,sub,tx,sy+46,.75);c.font=`11px ${sans}`;c.fillText(meta,tx,sy+64);
+ c.fillStyle='rgba(251,249,243,.95)';c.fillRect(0,vh-footH,vw,footH);c.fillStyle='rgba(28,42,37,.09)';c.fillRect(0,vh-footH,vw,1);
+ c.fillStyle=muted;c.font=`10.5px ${sans}`;c.textBaseline='middle';lines.forEach((t,i)=>c.fillText(t,12,vh-footH+13.5+i*15));
  const a=document.createElement('a');a.download='九华山三维地图-实景增强版.png';a.href=out.toDataURL('image/png');a.click();toast('当前三维画面已导出');
 };
 
-// Whatever covers part of the map (the desktop search panel, a phone's bottom sheet or landscape side sheet) slides the map
+// Whatever covers part of the map (the desktop column, a phone's bottom sheet or landscape side sheet) slides the map
 // centre into the part still visible, so a chosen place is never hidden under its own card; the shift eases in tick().
 // A vertical offset gets a matching taller fov so the visible part keeps its scale (setViewOffset itself sets the aspect).
 const FOV=43;let shift={x:0,y:0},shiftTarget={x:0,y:0};
 function applyViewShift(){const w=innerWidth,h=innerHeight,{x,y}=shift,fw=w+2*Math.abs(x),fh=h+2*Math.abs(y);camera.aspect=fw/fh;camera.fov=Math.atan(Math.tan(FOV*Math.PI/360)*fh/h)*360/Math.PI;
  if(fw>w+1||fh>h+1)camera.setViewOffset(fw,fh,x>0?2*x:0,y>0?2*y:0,w,h);else camera.clearViewOffset();camera.updateProjectionMatrix();}
-function syncViewShift(){const w=innerWidth,h=innerHeight,card=$('#card'),panel=$('#panel'),directoryOpen=!panel.classList.contains('closed');let x=0,y=0;
- const otherInteraction=directoryOpen||card.classList.contains('show')||!!cameraFlight.destination?.onDone||!!routes?.active||$('#data-dialog').open||$('#viewer').classList.contains('show');
- const hideChrome=otherInteraction||!$('#settings').classList.contains('collapsed');
- if(document.body.classList.contains('map-chrome-hidden')!==hideChrome){
-  document.body.classList.toggle('map-chrome-hidden',hideChrome);
+// The desktop column (card over panel, both at the left) covers the map up to its right edge; offsetLeft/offsetWidth
+// ignore the slide-in transform, so a sheet mid-animation measures where it will rest.
+function columnEdge(el){return el&&el.offsetWidth?el.offsetLeft+el.offsetWidth+12:0;}
+function syncViewShift(){const w=innerWidth,h=innerHeight,card=$('#card'),panel=$('#panel'),body=document.body,directoryOpen=!panel.classList.contains('closed'),cardShown=card.classList.contains('show'),settingsOpen=!$('#settings').classList.contains('collapsed'),cardFlight=!!cameraFlight.destination?.onDone;let x=0,y=0;
+ const viewerOpen=$('#viewer').classList.contains('show'),otherInteraction=directoryOpen||cardShown||cardFlight||!!routes?.active||$('#data-dialog').open||viewerOpen;
+ // A phone gives the screen to whatever is open. On desktop the column sits beside the map, so only the view bar steps
+ // aside, for the route bar.
+ const hideChrome=mobile?otherInteraction||settingsOpen:!!routes?.active;
+ body.classList.toggle('panel-open',directoryOpen);body.classList.toggle('card-open',cardShown);body.classList.toggle('settings-open',settingsOpen);body.classList.toggle('card-flight',cardFlight);
+ if(body.classList.contains('map-chrome-hidden')!==hideChrome){
+  body.classList.toggle('map-chrome-hidden',hideChrome);
   if(hideChrome)interactionGuide.stop();
  }
  // The active layer panel keeps its own toggle available so it can be closed.
- for(const el of $$('.map-chrome')){const hide=el.id==='settings'?otherInteraction:hideChrome;if(el.inert===hide)continue;
-  el.classList.toggle('is-hidden',hide);el.inert=hide;el.setAttribute('aria-hidden',String(hide));if(el.matches('button'))el.disabled=hide;for(const button of el.querySelectorAll('button'))button.disabled=hide;}
- if(!mobile)x=panel.classList.contains('closed')?0:160;
- else{const sheet=card.classList.contains('show')?card:panel.classList.contains('closed')?null:panel;
-  if(sheet&&sheet.offsetWidth>w*.6){const bar=$('.viewbar'),top=sheet===card?Math.max(...[$('#routes-open'),$('#panel-open')].map(b=>b.offsetTop+b.offsetHeight))+8:hideChrome?0:bar.offsetTop+bar.offsetHeight;y=Math.max(0,h/2-(top+sheet.offsetTop)/2);}
+ for(const el of $$('.map-chrome')){const hide=!mobile?hideChrome&&el.matches('.viewbar'):el.id==='settings'?otherInteraction:hideChrome;if(el.inert!==(hide||viewerOpen))el.inert=hide||viewerOpen;if(el.classList.contains('is-hidden')===hide)continue;
+  el.classList.toggle('is-hidden',hide);el.setAttribute('aria-hidden',String(hide));if(el.matches('button'))el.disabled=hide;for(const button of el.querySelectorAll('button'))button.disabled=hide;}
+ // The photo viewer is modal: the page behind it is inert while it is open. On desktop the directory under an open card
+ // is inert too, so Tab never lands on a list row hidden beneath it.
+ for(const el of $('#app').children){if(el.id==='viewer'||el.matches('.map-chrome,dialog'))continue;const inert=viewerOpen||el.id==='panel'&&!mobile&&cardShown;if(el.inert!==inert)el.inert=inert;}
+ // 正在前往… while a card's flight is under way (never under reduced motion, where flights are instant).
+ const hint=$('#flight-hint'),flying=!reduce&&cardFlight&&!!hint.querySelector('.fh-name').textContent;
+ if(flying&&!hint.classList.contains('show'))reveal(hint);else if(!flying&&hint.classList.contains('show'))conceal(hint,240);
+ // Desktop: a card on its way already counts, so the map is centred beside the column before the card slides in.
+ if(!mobile)x=-columnEdge(cardShown?card:directoryOpen||cardFlight?panel:null)/2;
+ else{const sheet=cardShown?card:directoryOpen?panel:null;
+  // Chrome is hidden whenever a phone sheet is up, so the free map starts at the top (8 px clear of the edge for a card).
+  if(sheet&&sheet.offsetWidth>w*.6){const bar=$('.viewbar'),top=hideChrome?(sheet===card?8:0):bar.offsetTop+bar.offsetHeight;y=Math.max(0,h/2-(top+sheet.offsetTop)/2);}
   else if(sheet)x=Math.max(0,(w-sheet.offsetLeft)/2);}
  shiftTarget={x,y};if(!started){shift={x,y};applyViewShift();}}
-function resize(){labelsDirty=true;resolution.setCeiling(resolutionCeiling());syncResolution(idleResolution);const w=innerWidth,h=innerHeight,narrow=compactViewport();if(narrow!==mobile){mobile=narrow;if(narrow){$('#panel').classList.add('closed');setSettings(false);}renderer.shadowMap.enabled=sun.castShadow=shadows();}renderer.setSize(w,h);labels.setSize(w,h);
- const open=!mobile&&!$('#panel').classList.contains('closed');document.body.classList.toggle('with-panel',open);syncViewShift();applyViewShift();syncSeg();}
+function resize(){labelsDirty=true;coversChanged();resolution.setCeiling(resolutionCeiling());syncResolution(idleResolution);const w=innerWidth,h=innerHeight,narrow=compactViewport(),flip=narrow!==mobile;if(flip){mobile=narrow;if(narrow){$('#panel').classList.add('closed');setSettings(false);}renderer.shadowMap.enabled=sun.castShadow=shadows();}renderer.setSize(w,h);labels.setSize(w,h);
+ const open=!mobile&&!$('#panel').classList.contains('closed');document.body.classList.toggle('with-panel',open);syncViewShift();applyViewShift();syncSeg();
+ // Crossing between the phone and desktop layouts (a window resize, a tablet turned) with a card open: the card moves from
+ // the column to a sheet or back, so its place is framed again for the new layout (no hint, the card stays as it is).
+ if(flip&&selected&&$('#card').classList.contains('show')&&!cameraFlight.active)fly(selected.featured?featuredPose():placePose(selected),700);}
 function syncVisibleViewport(){const vv=window.visualViewport,visible=vv?vv.height:innerHeight,editing=document.activeElement===$('#search');const inset=mobile&&editing&&vv?Math.max(0,innerHeight-vv.height-vv.offsetTop):0;document.documentElement.style.setProperty('--visible-height',`${Math.round(visible)}px`);document.documentElement.style.setProperty('--keyboard-inset',inset>120?`${Math.round(inset)}px`:'0px');document.body.classList.toggle('keyboard-open',inset>120);}
 window.visualViewport?.addEventListener('resize',syncVisibleViewport);window.visualViewport?.addEventListener('scroll',syncVisibleViewport);addEventListener('focusin',syncVisibleViewport);addEventListener('focusout',()=>requestAnimationFrame(syncVisibleViewport));addEventListener('resize',syncVisibleViewport);syncVisibleViewport();
-addEventListener('keydown',e=>{const v=$('#viewer');if(!v.hidden){if(e.key==='Escape')closeViewer();else if(e.key==='ArrowLeft'||e.key==='ArrowRight')v._go(e.key==='ArrowLeft'?-1:1);return;}if(e.key==='Escape'&&!$('#data-dialog').open){closeCard();closeMobileSheets(null);}});addEventListener('resize',resize);resize();
+// Esc: the photo viewer first; otherwise the card closes (its flight home is kept) with any other phone sheet, or the
+// desktop layer popover.
+addEventListener('keydown',e=>{const v=$('#viewer');if(!v.hidden){if(e.key==='Escape')closeViewer();else if(e.key==='ArrowLeft'||e.key==='ArrowRight')v._go(e.key==='ArrowLeft'?-1:1);return;}if(e.key==='Escape'&&!$('#data-dialog').open){const panel=$('#panel'),sheet=mobile&&!panel.classList.contains('closed'),had=panel.contains(document.activeElement);closeCard();closeMobileSheets('detail');if(!mobile)setSettings(false);if(sheet)panelFocusBack(had);}});addEventListener('resize',resize);resize();
 const temp=new THREE.Vector3();
-function occluded(p){const a=camera.position,b=p.label.position;for(let k=2;k<24;k++){const t=k/24,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;if(Math.abs(x)>W/2||Math.abs(z)>D/2)continue;if(hAt(x,z)*EX>a.y+(b.y-a.y)*t+4)return true;}return false;}
-function updateLabels(){labelSelections++;attachedLabels.length=0;const show=$('#layer-labels').checked,cands=[],w=innerWidth,h=innerHeight,cam=camera.position,cap=labelCap??(mobile?28:60);
- // Keep the query for reopening search, but only filter map labels while its panel is visible.
- const mapQuery=!$('#panel').classList.contains('closed')&&!$('#tab-places').hidden?search:'';
- for(const p of labelPlaces){const lp=p.label.position,dist=Math.hypot(lp.x-cam.x,lp.y-cam.y,lp.z-cam.z);
-  let v=show&&(dist<p.limit||p===selected||(p.hall&&p.parent===selected&&dist<900))&&(p.road||p.hall||p.featured||filtered(p,mapQuery));let x=0,y=0;
-  if(v){temp.copy(lp).project(camera);x=(temp.x+1)*w/2;y=(1-temp.y)*h/2;if(temp.z>1||temp.z<0||x<p.labelWidth/2+4||x>w-p.labelWidth/2-4||y<35||y>h-18)v=false;}
-  if(v&&!p.road&&!p.featured&&occluded(p))v=false;cands.push({p,dist,x,y,v});}
- cands.sort((a,b)=>(!!b.p.featured)-(!!a.p.featured)||(b.p===selected)-(a.p===selected)||a.p.p-b.p.p||a.dist-b.dist);const occupied=[];visibleLabelCount=0;
- for(const c of cands){if(c.v){const r=[c.x-c.p.labelWidth/2,c.y-30,c.x+c.p.labelWidth/2,c.y+4];if(c.p!==selected&&!c.p.featured&&(visibleLabelCount>=cap||occupied.some(o=>!(r[2]<o[0]||r[0]>o[2]||r[3]<o[1]||r[1]>o[3]))))c.v=false;else{occupied.push(r);visibleLabelCount++;}}
+function occluded(p,slack=4,tail=0){const a=camera.position,b=p.label.position,end=tail?1-tail/Math.max(tail*1.2,a.distanceTo(b)):1;for(let k=2;k<24&&k/24<end;k++){const t=k/24,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;if(Math.abs(x)>W/2||Math.abs(z)>D/2)continue;if(hAt(x,z)*EX>a.y+(b.y-a.y)*t+slack)return true;}return false;}
+// What covers the map, as [left,top,right,bottom] CSS px: each piece of chrome, the desktop column (from the screen's
+// left edge), a phone's bottom sheet (from its top edge down) or side sheet, and the layer popover or sheet. A label
+// under one is dropped rather than left to poke out beside it, and its place in the label budget goes to one people can
+// see. The rects are measured only when the layout changes (a class or size change of the body or a cover, or a
+// window resize) and again once the transitions have settled, never per label pass. The credits row counts whole: its
+// status pill changes width with the scale bar on every zoom step, the row does not. offset* gives the resting place of
+// a bar or sheet still sliding; chrome hidden by its own class drops out at once, chrome fading out on a body class
+// counts until it has gone.
+const COVERS='.brand,.viewbar,.rail>*,.dock,.map-meta,#route-hud,#flight-hint,#panel,#card,.settings-wrap';
+function restRect(el){let x=0,y=0;for(let e=el;e;e=e.offsetParent){x+=e.offsetLeft;y+=e.offsetTop;}return[x,y,x+el.offsetWidth,y+el.offsetHeight];}
+function measureCovers(){const w=innerWidth,h=innerHeight,settingsOpen=!$('#settings').classList.contains('collapsed');coversDirty=false;chromeRects=[];coverMeasures++;
+ for(const el of $$(COVERS)){if(!el.offsetWidth||el.closest('.is-hidden')||el.id==='panel'&&el.classList.contains('closed')||(el.id==='card'||el.id==='flight-hint')&&!el.classList.contains('show')||el.matches('.settings-wrap')&&!settingsOpen||getComputedStyle(el).visibility==='hidden')continue;
+  const r=restRect(el);
+  if(el.matches('.sheet')){if(!mobile)r[0]=r[1]=0;else if(el.offsetWidth>w*.6){r[0]=0;r[2]=w;}else{r[1]=0;r[2]=w;}r[3]=h;}
+  // Chrome that floats within a gutter of a screen edge covers the gutter too: a point there counts as under it.
+  else{if(r[0]<16)r[0]=0;if(w-r[2]<16)r[2]=w;if(r[1]<16)r[1]=0;if(h-r[3]<16)r[3]=h;}
+  // Opaque sheets (directory, card, phone layer sheet) hide what is under them; any label whose point they cover goes.
+  if(el.matches('.sheet')||mobile&&el.matches('.settings-wrap'))r.push(1);
+  chromeRects.push(r);}}
+// The first change of a burst asks for a label pass at once; the rest only mark the rects stale until it settles.
+function coversChanged(){coversDirty=true;if(!coversChanged.t)labelsDirty=true;clearTimeout(coversChanged.t);coversChanged.t=setTimeout(()=>{coversChanged.t=0;coversDirty=labelsDirty=true;},520);}
+{const mo=new MutationObserver(coversChanged),ro=window.ResizeObserver&&new ResizeObserver(coversChanged);mo.observe(document.body,{attributes:true,attributeFilter:['class']});
+ for(const el of $$(COVERS)){mo.observe(el,{attributes:true,attributeFilter:['class','hidden']});ro?.observe(el);}}
+// Where a place label's pill sits: ox/oy = px from where its bottom centre would meet its point; the leader runs from
+// the point to the pill's nearest edge (len px at ang degrees). By default the pill stands on a short stem above the
+// point. Written to the DOM only when it changes.
+function placeLabel(p,q){const o=p.pos;if(o&&o.ox===q.ox&&o.oy===q.oy&&o.len===q.len&&o.ang===q.ang)return;p.pos=q;const st=p.el.style;
+ st.setProperty('--dx',q.ox+'px');st.setProperty('--dy',q.oy+'px');st.setProperty('--len',q.len+'px');st.setProperty('--ang',q.ang+'deg');}
+const restSpot=p=>({ox:0,oy:-p.stem,len:p.stem,ang:-90});
+// exportCovers: the PNG export's own boxes (brand, credits) stand in for the page's chrome.
+// moving: the camera moved since the last frame. Returns true when a terrain verdict is still waiting for a second pass.
+function updateLabels(exportCovers,moving=false){labelSelections++;let again=false;attachedLabels.length=0;const show=$('#layer-labels').checked,cands=[],w=innerWidth,h=innerHeight,cam=camera.position,cap=labelCap??(mobile?28:60);
+ if(show&&!exportCovers&&coversDirty)measureCovers();const covers=exportCovers||(show?chromeRects:[]),sheets=covers.filter(o=>o[4]),bars=covers.filter(o=>!o[4]);
+ // The search text and category only filter the map's labels while the 找地点 list is open; closing it brings them all back.
+ const listing=!$('#panel').classList.contains('closed')&&!$('#tab-places').hidden,routeOn=document.body.classList.contains('route-on');
+ for(const p of labelPlaces){const lp=p.label.position,dist=Math.hypot(lp.x-cam.x,lp.y-cam.y,lp.z-cam.z),tier=p===selected?2:p.tier||0;
+  // A route shows its own stops; the other labels are hidden by CSS and need no room.
+  let v=show&&(!routeOn||p===selected)&&(dist<p.limit||p===selected||(p.hall&&p.parent===selected&&dist<900))&&(p.road||p.hall||p.featured||p===selected||!listing||filtered(p,search));let x=0,y=0;
+  if(v){temp.copy(lp).project(camera);x=(temp.x+1)*w/2;y=(1-temp.y)*h/2;const hw=p.labelWidth/2,top=y-p.labelHeight;
+   // A tiered label only needs its point on screen and clear of the opaque sheets (a tier-1 one clear of all chrome):
+   // its pill can move. The rest must fit where they stand, clear of all chrome.
+   if(temp.z>1||temp.z<0||(tier?x<4||x>w-4||y<4||y>h-8:x<hw+4||x>w-hw-4||top<4||y>h-18))v=false;
+   else if(tier){for(const o of tier>1?sheets:covers)if(x>o[0]&&x<o[2]&&y>o[1]&&y<o[3]){v=false;break;}}
+   else for(const o of covers)if(x-hw<o[2]&&x+hw>o[0]&&top<o[3]&&y+4>o[1]){v=false;break;}}
+  // The terrain test misfires along ridges (百岁宫, 天台), so a tiered place passes unless a hill clearly stands in the
+  // way short of its last 150 m: 10 m above the sight line to hide it, clear of it again to bring it back. A change of
+  // verdict must hold for two passes so a label does not blink at a ridge; the second pass is asked for even when the
+  // camera has stopped.
+  if(v&&!p.road&&!p.featured){const o=tier?occluded(p,p.occ?0:10,150):occluded(p);if(o!==p.occ){p.occN=(p.occN||0)+1;if(p.occ===undefined||p.occN>=2){p.occ=o;p.occN=0;}else again=true;}else p.occN=0;if(p.occ)v=false;}
+  cands.push({p,dist,x,y,v,tier});}
+ cands.sort((a,b)=>(!!b.p.featured)-(!!a.p.featured)||(b.p===selected)-(a.p===selected)||b.tier-a.tier||a.p.p-b.p.p||a.dist-b.dist);visibleLabelCount=0;
+ const meet=(a,b)=>Math.max(0,Math.min(a[2],b[2])-Math.max(a[0],b[0]))*Math.max(0,Math.min(a[3],b[3])-Math.max(a[1],b[1])),
+  inside=(px,py,r)=>px>r[0]&&px<r[2]&&py>r[1]&&py<r[3],
+  // Does the segment a→b pass through rect r (Liang–Barsky)?
+  crosses=(ax,ay,bx,by,r)=>{let t0=0,t1=1;const dx=bx-ax,dy=by-ay;for(const[pp,qq]of[[-dx,ax-r[0]],[dx,r[2]-ax],[-dy,ay-r[1]],[dy,r[3]-ay]]){if(!pp){if(qq<0)return false;}else{const t=qq/pp;if(pp<0){if(t>t1)return false;if(t>t0)t0=t;}else{if(t<t0)return false;if(t<t1)t1=t;}}}return t1-t0>.02;},
+  cut=(a,b)=>{const d=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);return d(a[0],a[1],b[0])*d(a[0],a[1],b[1])<0&&d(b[0],b[1],a[0])*d(b[0],b[1],a[1])<0;};
+ // Placed pills (with a 2 px margin) and leaders; the points of every tiered label on show, which no pill may cover
+ // or a leader would seem to end at the wrong name.
+ const pills=[],leads=[],points=cands.filter(c=>c.v&&c.tier).map(c=>[c.x,c.y,c.p]);let others=0;
+ for(const c of cands){let spot=null;if(c.v){const P=c.p,hw=P.labelWidth/2,ph=P.labelHeight-P.stem,A=[c.x,c.y];
+   const at=(ox,oy)=>{const r=[c.x+ox-hw,c.y+oy-ph,c.x+ox+hw,c.y+oy],tx=clamp(c.x,r[0],r[2]),ty=clamp(c.y,r[1],r[3]),len=Math.hypot(tx-c.x,ty-c.y);
+    return{ox:Math.round(ox*2)/2,oy:Math.round(oy*2)/2,len:len<3?0:Math.round(len*2)/2,ang:Math.round(Math.atan2(ty-c.y,tx-c.x)*180/Math.PI),r,t:[tx,ty]};};
+   if(c.tier){
+    // Candidate spots: at rest, last pass's spot, then all round the point at growing distances (twelve directions),
+    // each also pushed back on screen, and spots just clear of any chrome next to the point.
+    const opts=[at(0,-P.stem)],prev=P.pos;if(prev)opts.push(at(prev.ox,prev.oy));
+    const onScreen=q=>{const dx=Math.max(0,2-q.r[0])+Math.min(0,w-2-q.r[2]),dy=Math.max(0,2-q.r[1])+Math.min(0,h-2-q.r[3]);return dx||dy?at(q.ox+dx,q.oy+dy):null;};
+    const buried=bars.some(o=>inside(c.x,c.y,o)),reach=buried?280:190,own=P.featured?7:4;
+    for(const d of buried?[10,26,48,76,110,150,200,250]:[10,26,48,76,110,150]){for(let k=0;k<12;k++){const a=(k*30-90)*Math.PI/180,ux=Math.cos(a),uy=Math.sin(a),ext=Math.min(Math.abs(ux)>1e-3?hw/Math.abs(ux):1e9,Math.abs(uy)>1e-3?ph/2/Math.abs(uy):1e9);
+      const q=at(ux*(d+ext),uy*(d+ext)+ph/2);opts.push(q);const s2=onScreen(q);if(s2)opts.push(s2);}}
+    for(const o of bars){const near=Math.max(o[0]-c.x,c.x-o[2],o[1]-c.y,c.y-o[3]);if(near>40)continue;
+     for(const q of[at(0,o[3]+4+ph-c.y),at(0,o[1]-4-c.y),at(o[0]-4-hw-c.x,ph/2),at(o[2]+4+hw-c.x,ph/2)]){opts.push(q);const s2=onScreen(q);if(s2)opts.push(s2);}}
+    // Score: a pill under chrome or another pill counts four times the area; covering another tiered point, or its own
+    // point when moved, costs a lot, and so does a leader through a pill (it would seem to end at the wrong name), less
+    // so crossing another leader or running under chrome; every px of leader beyond the stem costs a little. While the
+    // camera moves, every px a pill would jump from last pass's spot costs a little more, so labels hold still; once
+    // it stops they settle into the best layout. Cheap terms come first, and a spot that cannot win stops early.
+    let best=null,score=Infinity,bestClean=null,cleanScore=Infinity;
+    for(const q of opts){const r=q.r;if(r[0]<1||r[2]>w-1||r[1]<1||r[3]>h-1||q.len>reach)continue;
+     let lc=.8*Math.max(0,q.len-P.stem);if(prev){const jump=Math.hypot(q.ox-prev.ox,q.oy-prev.oy);lc+=moving?1.2*jump+4*Math.max(0,jump-70):jump<2?-2:0;}if(lc>=score)continue;
+     const m=[r[0]-2,r[1]-2,r[2]+2,r[3]+2];let pc=0;
+     for(const o of covers)pc+=4*meet(r,o);for(const o of pills)pc+=4*meet(m,o);
+     for(const[px,py,pp]of points)if(pp!==P?inside(px,py,[m[0]-3,m[1]-3,m[2]+3,m[3]+3]):q!==opts[0]&&inside(px,py,[m[0]-own,m[1]-own,m[2]+own,m[3]+own]))pc+=pp===P?3000:1500;
+     for(const[a,t]of leads)if(crosses(a[0],a[1],t[0],t[1],[r[0]+3,r[1]+3,r[2]-3,r[3]-3]))pc+=1200;
+     if(c.tier<2&&pc||pc+lc>=score)continue;
+     if(q.len){const[tx,ty]=q.t;for(const o of pills)if(crosses(c.x,c.y,tx,ty,[o[0]+3,o[1]+3,o[2]-3,o[3]-3]))lc+=1200;for(const l of leads)if(cut([A,q.t],l))lc+=600;
+      for(const o of bars)if(!inside(c.x,c.y,o)&&crosses(c.x,c.y,tx,ty,[o[0]-4,o[1]-4,o[2]+4,o[3]+4]))lc+=900;}
+     const sc=pc+lc;if(sc<score){score=sc;best=q;}if(!pc&&sc<cleanScore){cleanScore=sc;bestClean=q;}if(sc<=0)break;}
+    // A must-show label takes the best spot there is; a tier-1 label only a spot whose pill is clear, else stays out.
+    spot=c.tier>1?best||opts[0]:bestClean;if(!spot)c.v=false;
+    else{pills.push([spot.r[0]-2,spot.r[1]-2,spot.r[2]+2,spot.r[3]+2]);if(spot.len)leads.push([A,spot.t]);visibleLabelCount++;}}
+   else{const r=[c.x-hw-2,c.y-P.labelHeight-2,c.x+hw+2,c.y+4];
+    if(others>=cap||pills.some(o=>meet(r,o))||points.some(([px,py])=>inside(px,py,r))||leads.some(([a,t])=>crosses(a[0],a[1],t[0],t[1],r)))c.v=false;else{pills.push(r);others++;visibleLabelCount++;}}}
+  placeLabel(c.p,spot||restSpot(c.p));
   if(c.v){if(!c.p.label.parent)scene.add(c.p.label);c.p.label.visible=true;attachedLabels.push(c.p.label);}else if(c.p.label.parent)scene.remove(c.p.label);}
+ return again;
 }
-function renderLabelLayer(){labelRoot.children=attachedLabels.filter(o=>o.parent).concat(routes?.labelObjects||[]);labels.render(labelRoot,camera);labelPasses++;}
+
+
+// CSS2D stacks labels by distance alone; a route stop showing its name is lifted over the dots and stems around it.
+function renderLabelLayer(){labelRoot.children=attachedLabels.filter(o=>o.parent).concat(routes?.labelObjects||[]);labels.render(labelRoot,camera);for(const o of routes?.labelObjects||[])if(o.element.classList.contains('named'))o.element.style.zIndex=1000+(+o.element.style.zIndex||0);labelPasses++;}
 // Idle phones retain low-rate decorative animation. Skip that animation's CPU work
 // as well as the GPU draw on unused frames; gestures, damping and route previews
 // still run at full rate. Idle resolution restores clarity without lowering models.
 let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,benchUntil=0,benchPhase=0,benchFrom=0,samples=[],frameAvg=16.7,frameN=0,watchAt=0,tierProbeAllowed=true;
 let selectionPending=true,selectionAt=0,hudAt=0,animationUpdates=0;
-const labelCamera=new THREE.Matrix4(),labelProjection=new THREE.Matrix4();
+const labelCamera=new THREE.Matrix4(),labelProjection=new THREE.Matrix4();const labelPassPos=new THREE.Vector3(),labelPassQuat=new THREE.Quaternion();
 for(const ev of['pointerdown','pointermove','wheel','keydown','input','change','click'])addEventListener(ev,()=>{lastInput=performance.now();if(['keydown','input','change','click'].includes(ev))labelsDirty=true;},{capture:true,passive:true});
 function startBench(phase){benchPhase=phase;benchUntil=performance.now()+3000;samples=[];}
 function setTier(t,why){t=Math.max(0,Math.min(maxTier,t));const was=tier,wasE=emergency;tier=t;emergency=why==='emergency';if(t!==was||emergency!==wasE)applyTier();}
@@ -1246,7 +1503,7 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  cameraFlight.update(now);
  controls.target.x=clamp(controls.target.x,-W/2,W/2);controls.target.z=clamp(controls.target.z,-D/2,D/2);const moved=controls.update();if(Math.abs(camera.position.x)<W/2&&Math.abs(camera.position.z)<D/2&&!inTerrainCut(camera.position.x,camera.position.z))camera.position.y=Math.max(camera.position.y,hAt(camera.position.x,camera.position.z)*EX+8);
  const shifting=shift.x!==shiftTarget.x||shift.y!==shiftTarget.y;
- if(shifting){const k=1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
+ if(shifting){const k=reduce?1:1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
  const idle=lowPower&&!benchUntil&&!cameraFlight.active&&!moved&&!shifting&&!routes?.previewing&&now-lastInput>1500;
  if(idle&&!labelsDirty&&now-lastRender<(now-lastInput>8000?98:48)){renderedLast=false;return;}
  if(renderedLast&&!idle)measure(dt,now);else if(!benchUntil){samples=[];frameN=0;}renderedLast=true;lastRender=now;syncResolution(idle,now);
@@ -1259,8 +1516,12 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  camera.updateMatrixWorld();const cameraChanged=!labelCamera.equals(camera.matrixWorld)||!labelProjection.equals(camera.projectionMatrix);
  if(cameraChanged)selectionPending=true;
  const selectedLabels=labelsDirty||selectionPending&&now-selectionAt>=110;
- if(selectedLabels){updateLabels();selectionAt=now;selectionPending=false;}
- if(selectedLabels||cameraChanged&&now-hudAt>=110){hudAt=now;const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':'九华山全景 · 双指缩放';const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
+ if(selectedLabels){
+  // The camera only counts as moving for the labels while it visibly moves (the damping tail creeps on for seconds).
+  // The first pass after it stops is always run, with no cost for moving a label, so labels settle into the best layout.
+  const moved=camera.position.distanceTo(labelPassPos)>Math.max(.02,camera.position.distanceTo(controls.target)*4e-4)||labelPassQuat.angleTo(camera.quaternion)>4e-4;
+  labelPassPos.copy(camera.position);labelPassQuat.copy(camera.quaternion);selectionPending=updateLabels(null,moved)||moved;selectionAt=now;}
+ if(selectedLabels||cameraChanged&&now-hudAt>=110){hudAt=now;const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':(fineMouse.matches?'九华山全景 · 滚轮缩放':'九华山全景 · 双指缩放');const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
  renderer.render(scene,camera);const routeLabelsChanged=routes?.updateLabels(now);
  if(cameraChanged||selectedLabels||routeLabelsChanged)renderLabelLayer();labelsDirty=false;
  labelCamera.copy(camera.matrixWorld);labelProjection.copy(camera.projectionMatrix);
@@ -1268,5 +1529,5 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
 }
 started=true;applyTier();startBench(1);$('#loading').classList.add('done');setTimeout(()=>{$('#loading').hidden=true;if(!document.body.classList.contains('map-chrome-hidden'))interactionGuide.start();},700);requestAnimationFrame(tick);
 // Inspectable public diagnostics are also useful for verifying delivery, without private app state.
-window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get quality(){return TIERS[tier].name+(emergency?'-':'');},get tier(){return tier;},get frameMs(){return Math.round(frameAvg*10)/10;},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;},get resolutionLimit(){return resolution.limit;},get idleResolution(){return idleResolution;},get spatialMode(){return spatialBatches.some(b=>b.near)?'near':'far';},get labelPasses(){return labelPasses;},get labelSelections(){return labelSelections;},get animationUpdates(){return animationUpdates;}};
+window.mapDiagnostics={version:G.version,buildings:G.stats.buildings,places:places.length,businesses:G.stats.businesses,trees:trees.length,bamboo:bamboo.length,roads:G.roads.length,coordinateSystem:G.geo.crs,randomHouses:0,detailModel:'mapped footprints + area-rule facades; only 居之林 named among businesses',signs:signTexts.length,lanterns:lanternPts.length,get drawCalls(){return renderer.info.render.calls;},get frames(){return renderer.info.render.frame;},get pixelRatio(){return renderer.getPixelRatio();},get quality(){return TIERS[tier].name+(emergency?'-':'');},get tier(){return tier;},get frameMs(){return Math.round(frameAvg*10)/10;},get triangles(){return renderer.info.render.triangles;},get visibleLabels(){return visibleLabelCount;},get resolutionLimit(){return resolution.limit;},get idleResolution(){return idleResolution;},get spatialMode(){return spatialBatches.some(b=>b.near)?'near':'far';},get labelPasses(){return labelPasses;},get labelSelections(){return labelSelections;},get labelCovers(){return chromeRects.map(r=>r.map(Math.round));},get coverMeasures(){return coverMeasures;},get animationUpdates(){return animationUpdates;}};
 }

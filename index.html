@@ -1,13 +1,16 @@
 <!doctype html><html lang="zh-CN"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#eef0e9">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f3ea">
 <meta name="robots" content="noindex,nofollow">
 <title>九华山 · 三维实地导览</title><link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=20260930-card-layout"><link rel="stylesheet" href="mobile.css?v=20260930-card-layout"><script type="importmap">{"imports":{"three":"./vendor/build/three.module.js","three/addons/":"./vendor/examples/jsm/"}}</script>
+<link rel="stylesheet" href="style.css?v=20261001-redesign"><link rel="stylesheet" href="mobile.css?v=20261001-redesign"><script type="importmap">{"imports":{"three":"./vendor/build/three.module.js","three/addons/":"./vendor/examples/jsm/"}}</script>
+<script>/* If app.js or any module it imports fails to download, turn the loader into the error screen; if loading stalls, offer a reload. */
+addEventListener('error',function(e){var s=e.target,l=document.getElementById('loading'),r=document.getElementById('reload');if(!s||s.tagName!=='SCRIPT'||!/\/app\.js(\?|$)/.test(s.src)||!l||l.classList.contains('done'))return;l.classList.add('failed');document.getElementById('load-text').textContent='网络不稳，加载中断了，请重新加载。';r.hidden=false;r.onclick=function(){location.reload();};},true);
+setTimeout(function(){var l=document.getElementById('loading'),r=document.getElementById('reload');if(!l||!r||!r.hidden||/\b(done|failed)\b/.test(l.className))return;document.getElementById('load-text').textContent='网络较慢，仍在加载…也可以点“重新加载”';r.hidden=false;r.onclick=function(){location.reload();};},45000);</script>
 </head><body><main id="app">
 <div id="stage" role="img" aria-label="九华山可交互三维模型：单指拖动旋转，双指开合缩放，双指同向滑动平移"></div>
 
-<header class="brand glass map-chrome">
- <div class="brand-row"><div class="seal" aria-hidden="true">九<br>华</div><div class="brand-text"><h1>九华山</h1><p>三维实地导览 · 走近九华</p></div></div>
+<header class="brand map-chrome">
+ <div class="brand-row"><div class="seal" aria-hidden="true"><span>九</span><span>华</span></div><div class="brand-text"><h1>九华山</h1><p>三维实地导览<span class="brand-more"> · 走近九华</span></p></div></div>
  <button id="featured-cta" class="featured-cta" type="button" aria-label="查看居之林民宿">
   <span class="cta-pin" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 11.2 12 4.5l8 6.7V19a1 1 0 0 1-1 1h-4.6v-5.2H9.6V20H5a1 1 0 0 1-1-1z"/></svg></span>
   <span class="cta-text"><b>居之林民宿</b><small>凤形新村 19 号<span class="cta-more"> · 带您看看</span></small></span>
@@ -15,54 +18,54 @@
  </button>
 </header>
 
-<nav class="viewbar glass map-chrome" aria-label="地图视角"><span class="seg-ind" aria-hidden="true"></span><button data-view="town" class="active">九华街</button><button data-view="all">全山</button><button data-view="top">俯视</button><button data-view="baisui">百岁宫</button><button data-view="tiantai">天台</button></nav>
-
-<button id="help-open" class="help-open glass map-chrome" type="button" aria-controls="gesture-tour" aria-label="操作指南，重播手势动画"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.9c0 1.9-2.4 2-2.4 3.6M12 16.5h.01"/></svg><span>操作指南</span></button>
+<nav class="viewbar map-chrome" aria-label="地图视角"><span class="seg-ind" aria-hidden="true"></span><button data-view="town" class="active">九华街</button><button data-view="all">全山</button><button data-view="top">俯视</button><button data-view="baisui">百岁宫</button><button data-view="tiantai">天台</button></nav>
 
 <section id="gesture-tour" class="gesture-tour" aria-label="地图操作动画" hidden>
  <svg class="gesture-symbols" aria-hidden="true"><defs>
   <path id="guide-one-finger" d="M37 65V26c0-11 15-11 15 0v24c0-10 14-10 14 0v6c0-9 13-9 13 0v6c0-8 12-8 12 1v14c0 15-10 24-24 24H54c-8 0-14-4-19-10L17 70c-8-9 3-19 11-12l16 15"/>
   <path id="guide-two-fingers" d="M31 63V28c0-11 14-11 14 0v20h4V16c0-11 14-11 14 0v33c0-10 14-10 14 1v6c0-9 13-8 13 2v15c0 15-10 26-25 26H55c-9 0-15-4-20-10L16 68c-7-8 3-17 10-10l16 16"/>
  </defs></svg>
- <div class="tour-steps">
-  <div class="tour-step" data-gesture="pan" aria-hidden="true">
-   <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
-    <path class="gesture-arrow" d="M15 61h150m-9-8 9 8-9 8M24 53l-9 8 9 8"/>
-    <g class="touch-art pan-hand"><use class="gesture-hand" href="#guide-two-fingers" transform="translate(36 4)"/><circle class="touch-halo" cx="74" cy="28" r="11"/><circle class="touch-halo" cx="92" cy="16" r="11"/></g>
-   </svg>
-   <span class="tour-step-label">01 / 03 · 移动机位</span>
-   <strong data-tour-title>双指同向滑动</strong>
-   <p data-tour-description>保持两指间距，平移到旁边看看</p>
+ <div class="tour-card">
+  <div class="tour-steps">
+   <div class="tour-step" data-gesture="pan" aria-hidden="true">
+    <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
+     <path class="gesture-arrow" d="M15 61h150m-9-8 9 8-9 8M24 53l-9 8 9 8"/>
+     <g class="touch-art pan-hand"><use class="gesture-hand" href="#guide-two-fingers" transform="translate(36 4)"/><circle class="touch-halo" cx="74" cy="28" r="11"/><circle class="touch-halo" cx="92" cy="16" r="11"/></g>
+    </svg>
+    <span class="tour-step-label">01 / 03 · 移动机位</span>
+    <strong data-tour-title><span class="t-touch">双指同向滑动</span><span class="t-mouse">按住右键拖动</span></strong>
+    <p data-tour-description><span class="t-touch">保持两指间距，平移到旁边看看</span><span class="t-mouse">整张地图跟着平移，到旁边看看</span></p>
+   </div>
+   <div class="tour-step" data-gesture="rotate" aria-hidden="true">
+    <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
+     <path class="gesture-arrow" d="M22 48c29-31 107-31 136 0m-1-12 1 12-12-1M23 36l-1 12 12-1"/>
+     <g class="touch-art rotate-hand"><use class="gesture-hand" href="#guide-one-finger" transform="translate(36 7)"/><circle class="touch-halo" cx="80" cy="31" r="11"/></g>
+    </svg>
+    <span class="tour-step-label">02 / 03 · 旋转视角</span>
+    <strong data-tour-title><span class="t-touch">单指拖动</span><span class="t-mouse">按住左键拖动</span></strong>
+    <p data-tour-description>左右环看，上下调整俯仰角度</p>
+   </div>
+   <div class="tour-step" data-gesture="zoom" aria-hidden="true">
+    <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
+     <g class="touch-art"><path class="gesture-arrow" d="M19 38h48m-39-8-9 8 9 8m85-8h48m-9-8 9 8-9 8"/><g class="spread-left"><use class="gesture-hand" href="#guide-one-finger" transform="translate(24 24) scale(.62)"/></g><g class="spread-right"><use class="gesture-hand" href="#guide-one-finger" transform="translate(156 24) scale(-.62 .62)"/></g></g>
+    </svg>
+    <span class="tour-step-label">03 / 03 · 拉近拉远</span>
+    <strong data-tour-title><span class="t-touch">双指开合</span><span class="t-mouse">滚动滚轮</span></strong>
+    <p data-tour-description><span class="t-touch">张开拉近，捏合拉远</span><span class="t-mouse">向前滚拉近，向后滚拉远</span></p>
+   </div>
   </div>
-  <div class="tour-step" data-gesture="rotate" aria-hidden="true">
-   <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
-    <path class="gesture-arrow" d="M22 48c29-31 107-31 136 0m-1-12 1 12-12-1M23 36l-1 12 12-1"/>
-    <g class="touch-art rotate-hand"><use class="gesture-hand" href="#guide-one-finger" transform="translate(36 7)"/><circle class="touch-halo" cx="80" cy="31" r="11"/></g>
-   </svg>
-   <span class="tour-step-label">02 / 03 · 旋转视角</span>
-   <strong data-tour-title>单指拖动</strong>
-   <p data-tour-description>左右环看，上下调整俯仰角度</p>
-  </div>
-  <div class="tour-step" data-gesture="zoom" aria-hidden="true">
-   <svg class="tour-art" viewBox="0 0 180 124" aria-hidden="true">
-    <g class="touch-art"><path class="gesture-arrow" d="M19 38h48m-39-8-9 8 9 8m85-8h48m-9-8 9 8-9 8"/><g class="spread-left"><use class="gesture-hand" href="#guide-one-finger" transform="translate(24 24) scale(.62)"/></g><g class="spread-right"><use class="gesture-hand" href="#guide-one-finger" transform="translate(156 24) scale(-.62 .62)"/></g></g>
-   </svg>
-   <span class="tour-step-label">03 / 03 · 拉近拉远</span>
-   <strong data-tour-title>双指开合</strong>
-   <p data-tour-description>张开拉近，捏合拉远</p>
-  </div>
+  <div class="tour-progress" aria-hidden="true"><i></i><i></i><i></i></div>
+  <p class="tour-return">找不到方向？点「九华街」回到初始视角</p>
+  <button id="tour-skip" class="tour-skip" type="button">跳过演示 <span aria-hidden="true">×</span></button>
  </div>
- <div class="tour-progress" aria-hidden="true"><i></i><i></i><i></i></div>
- <p class="tour-return">找不到方向？点「九华街」回到初始视角</p>
- <button id="tour-skip" class="tour-skip" type="button">跳过演示 <span aria-hidden="true">×</span></button>
 </section>
 
-<aside id="panel" class="directory glass" aria-label="推荐路线、地点搜索与游览须知">
+<aside id="panel" class="directory sheet" aria-label="推荐路线、地点搜索与游览须知">
  <div class="sheet-grip" aria-hidden="true"></div>
- <div class="panel-head"><div><span class="eyebrow">EXPLORE</span><h2>探索九华</h2></div><button id="panel-close" class="icon-btn" aria-label="收起面板"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+ <div class="panel-head"><h2>探索九华</h2><button id="panel-close" class="icon-btn" aria-label="收起面板"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
  <div class="panel-tabs" role="tablist" aria-label="面板内容"><button id="tab-btn-routes" role="tab" data-tab="routes" aria-selected="true" aria-controls="tab-routes">推荐路线</button><button id="tab-btn-places" role="tab" data-tab="places" aria-selected="false" aria-controls="tab-places">找地点</button><button id="tab-btn-guide" role="tab" data-tab="guide" aria-selected="false" aria-controls="tab-guide">游览须知</button><span class="tab-ind" aria-hidden="true"></span></div>
  <div id="tab-routes" class="tab-pane routes-pane" role="tabpanel" aria-labelledby="tab-btn-routes"><div id="route-list" class="route-list"></div><div id="route-detail" class="route-detail" tabindex="0" role="region" aria-label="路线详情" hidden></div></div>
- <div id="tab-places" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-places" hidden>
+ <div id="tab-places" class="tab-pane places-pane" role="tabpanel" aria-labelledby="tab-btn-places" hidden>
  <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" aria-label="搜索寺庙、景点或公共设施" placeholder="搜索寺庙、景点、车站、公厕…" autocomplete="off"></label>
  <div id="categories" class="categories"><button data-category="all" class="active">全部</button><button data-category="temple">寺庙</button><button data-category="sight">景点山水</button><button data-category="service">公共服务</button></div>
  <div class="list-summary" id="list-summary"></div>
@@ -70,42 +73,57 @@
  </div>
  <div id="tab-guide" class="tab-pane guide-pane" role="tabpanel" aria-labelledby="tab-btn-guide" hidden><div id="guide" class="guide" tabindex="0" role="region" aria-label="游览须知"></div></div>
 </aside>
-<button id="routes-open" class="routes-open glass" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></svg>推荐路线</button>
-<div id="route-hud" class="route-hud glass" role="region" aria-label="路线行程" hidden><div class="rh-head"><span class="rh-dot" aria-hidden="true"></span><div class="rh-text"><b></b><small aria-live="polite"></small></div><button class="rh-play icon-btn" type="button" aria-label="路线预演"></button><button class="rh-list" type="button">行程</button><button class="rh-close icon-btn" type="button" aria-label="关闭路线"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="rh-bar" aria-hidden="true"><i></i></div><ol class="rh-stops" aria-label="行程站点"></ol></div>
-<button id="panel-open" class="panel-open glass"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>搜索地点</button>
 
-<section id="settings" class="settings glass map-chrome">
- <button id="settings-toggle" class="settings-title" aria-expanded="true" aria-controls="settings-body"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 8 4.2-8 4.2-8-4.2z"/><path d="m4 12.2 8 4.2 8-4.2M4 16l8 4.2 8-4.2"/></svg><span>图层</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
- <div class="settings-wrap"><div id="settings-body">
-  <label class="switch"><input type="checkbox" id="layer-buildings" checked><span class="track" aria-hidden="true"></span><span>建筑细节</span></label>
-  <label class="switch"><input type="checkbox" id="layer-trees" checked><span class="track" aria-hidden="true"></span><span>山林植被</span></label>
-  <label class="switch"><input type="checkbox" id="layer-labels" checked><span class="track" aria-hidden="true"></span><span>地点标注</span></label>
-  <label class="switch"><input type="checkbox" id="layer-trails" checked><span class="track" aria-hidden="true"></span><span>步道与台阶</span></label>
-  <div class="height-control"><div class="hc-row"><span>地形高度</span><output id="height-value">真实比例 ×1.0</output></div><input id="height" aria-label="地形高度比例" type="range" min="1" max="1.8" step="0.1" value="1"></div>
- </div></div>
-</section>
+<div id="route-hud" class="route-hud" role="region" aria-label="路线行程" hidden><div class="rh-head"><span class="rh-dot" aria-hidden="true"></span><div class="rh-text"><b></b><small aria-live="polite"></small></div><button class="rh-play icon-btn" type="button" aria-label="路线预演"></button><button class="rh-list" type="button">行程</button><button class="rh-close icon-btn" type="button" aria-label="关闭路线"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="rh-bar" aria-hidden="true"><i></i></div><ol class="rh-stops" aria-label="行程站点"></ol></div>
 
-<div class="map-actions glass">
- <button id="north" aria-label="朝北"><svg id="north-arrow" viewBox="0 0 24 24" aria-hidden="true"><path class="n" d="M12 3.5 16 12H8z"/><path class="s" d="M12 20.5 8 12h8z"/></svg></button>
- <span class="sep"></span>
- <button id="zoom-in" aria-label="放大"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button>
- <button id="zoom-out" aria-label="缩小"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button>
- <span class="sep"></span>
- <button id="capture" aria-label="保存当前三维画面"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.4-2h6.2L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.8" r="3.3"/></svg></button>
+<nav class="dock" aria-label="探索入口">
+ <button id="panel-open" class="dock-search" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><span>搜索寺庙、景点、车站<span class="dock-more">、公厕</span></span></button>
+ <span class="dock-sep" aria-hidden="true"></span>
+ <button id="routes-open" class="dock-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></svg><span>推荐路线</span></button>
+ <button id="guide-open" class="dock-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v14H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H18v-3M9 8h5M9 11h5"/></svg><span>游览须知</span></button>
+</nav>
+
+<div class="rail">
+ <div class="map-actions">
+  <button id="north" aria-label="朝北"><svg id="north-arrow" viewBox="0 0 24 24" aria-hidden="true"><path class="n" d="M12 3.5 16 12H8z"/><path class="s" d="M12 20.5 8 12h8z"/></svg></button>
+  <button id="zoom-in" aria-label="放大"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button>
+  <button id="zoom-out" aria-label="缩小"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+  <button id="capture" aria-label="保存当前三维画面"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.4-2h6.2L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.8" r="3.3"/></svg></button>
+ </div>
+ <section id="settings" class="settings map-chrome collapsed">
+  <button id="settings-toggle" class="settings-title" aria-expanded="false" aria-controls="settings-body" aria-label="图层与地形"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 8 4.2-8 4.2-8-4.2z"/><path d="m4 12.2 8 4.2 8-4.2M4 16l8 4.2 8-4.2"/></svg><span>图层</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+  <div class="settings-wrap"><div id="settings-body">
+   <div class="settings-head"><b>图层与地形</b><small>按需开关，地图随时响应</small></div>
+   <label class="switch"><input type="checkbox" id="layer-buildings" checked><span class="track" aria-hidden="true"></span><span>建筑细节</span></label>
+   <label class="switch"><input type="checkbox" id="layer-trees" checked><span class="track" aria-hidden="true"></span><span>山林植被</span></label>
+   <label class="switch"><input type="checkbox" id="layer-labels" checked><span class="track" aria-hidden="true"></span><span>地点标注</span></label>
+   <label class="switch"><input type="checkbox" id="layer-trails" checked><span class="track" aria-hidden="true"></span><span>步道与台阶</span></label>
+   <div class="height-control"><div class="hc-row"><span>地形高度</span><output id="height-value">真实比例 ×1.0</output></div><input id="height" aria-label="地形高度比例" type="range" min="1" max="1.8" step="0.1" value="1"></div>
+  </div></div>
+ </section>
+ <button id="help-open" class="help-open map-chrome" type="button" aria-controls="gesture-tour" aria-label="操作指南，重播手势动画"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.9c0 1.9-2.4 2-2.4 3.6M12 16.5h.01"/></svg><span>操作指南</span></button>
 </div>
 
-<div class="status glass"><span class="status-dot"></span><span id="scene-status">加载模型中</span><span id="scale-line"></span></div>
-<div class="credit">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">Overture Maps Foundation</a> · Copernicus DEM (ESA) · 补充轮廓 Qian Shi 等 / CC BY 4.0 · 楼高与立面为风貌复原 · <button id="credit-data">查看精度</button></div>
-<div class="credit-mobile">© OSM · Overture · Copernicus DEM · <button id="credit-mobile">资料</button></div>
+<div class="map-meta">
+ <div class="status"><span class="status-dot"></span><span id="scene-status">加载模型中</span><span id="scale-line"></span></div>
+ <div class="credit"><span class="credit-text" title="© OpenStreetMap contributors · Overture Maps Foundation · Copernicus DEM (ESA) · 补充轮廓 Qian Shi 等 / CC BY 4.0 · 楼高与立面为风貌复原">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">Overture Maps Foundation</a> · Copernicus DEM (ESA) · 补充轮廓 Qian Shi 等 / CC BY 4.0 · 楼高与立面为风貌复原</span><span class="credit-sep" aria-hidden="true">·</span><button id="credit-data">查看精度</button></div>
+ <div class="credit-mobile">© OSM 等 · <button id="credit-mobile" aria-label="资料：数据来源与精度说明">资料</button></div>
+</div>
 
-<section id="card" class="info-card glass" hidden aria-live="polite"></section>
+<div id="flight-hint" class="flight-hint" role="status" hidden><span class="fh-dot" aria-hidden="true"></span><span class="fh-text">正在前往</span><b class="fh-name"></b></div>
 
-<dialog id="data-dialog"><div class="dialog-head"><div><span class="eyebrow">ABOUT THIS MODEL</span><h2>这座模型，依据什么建成</h2></div><button id="data-close" class="icon-btn" aria-label="关闭资料说明"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div id="data-content" tabindex="0" autofocus role="region" aria-label="资料说明内容"></div></dialog>
+<section id="card" class="info-card sheet" hidden></section>
+
+<dialog id="data-dialog"><div class="dialog-head"><div><span class="eyebrow">资料说明</span><h2>这座模型，依据什么建成</h2></div><button id="data-close" class="icon-btn" aria-label="关闭资料说明"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div id="data-content" tabindex="0" autofocus role="region" aria-label="资料说明内容"></div></dialog>
 
 <div id="loading" class="loading">
- <svg class="load-art" viewBox="0 0 160 70" aria-hidden="true"><path class="far" d="M2 60 30 34l14 10 22-26 20 18 14-12 26 22 18-10 12 24"/><path class="near" d="M2 66 24 50l18 8 26-20 22 16 18-12 24 14 26-4"/></svg>
- <h2>九华山</h2><p id="load-text">读取地形与真实建筑轮廓</p><div class="load-bar"><span></span></div><button id="reload" class="reload-btn" type="button" hidden>重新加载</button>
+ <div class="load-inner">
+  <div class="load-seal" aria-hidden="true"><span>九</span><span>华</span></div>
+  <h2>九华山</h2><p class="load-sub">三维实地导览</p>
+  <svg class="load-art" viewBox="0 0 160 70" aria-hidden="true"><path class="far" d="M2 60 30 34l14 10 22-26 20 18 14-12 26 22 18-10 12 24"/><path class="near" d="M2 66 24 50l18 8 26-20 22 16 18-12 24 14 26-4"/></svg>
+  <p id="load-text">读取地形与真实建筑轮廓</p><div class="load-bar"><span></span></div><button id="reload" class="reload-btn" type="button" hidden>重新加载</button>
+ </div>
 </div>
 <div id="viewer" class="viewer" role="dialog" aria-modal="true" aria-label="居之林民宿实拍照片" hidden><div class="viewer-strip"></div><button class="viewer-close icon-btn" type="button" aria-label="关闭照片"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button><button class="viewer-prev icon-btn" type="button" aria-label="上一张"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button><button class="viewer-next icon-btn" type="button" aria-label="下一张"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button><div class="viewer-count" aria-live="polite"></div></div>
 <div id="toast" role="status" hidden></div>
-</main><script type="module" src="app.js?v=20260930-card-layout"></script></body></html>
+</main><script type="module" src="app.js?v=20261001-redesign"></script></body></html>

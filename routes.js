@@ -84,7 +84,8 @@ export function setupRoutes(ctx) {
     const last = route.stops.length - 1;
     for (const {s, idx} of byPlace.values()) {
       const box = el('div', 'maplabel route-stop' + (idx.includes(0) ? ' start' : idx.includes(last) ? ' end' : ''));
-      const b = el('button'), name = el('span', 'rs-name', s.n); b.type = 'button'; b.title = s.n;
+      // out of the Tab order, like the map's other labels: the itinerary and the route bar list the same stops as buttons
+      const b = el('button'), name = el('span', 'rs-name', s.n); b.type = 'button'; b.title = s.n; b.tabIndex = -1;
       b.append(el('span', 'rs-num' + (idx.length > 1 ? ' multi' : ''), idx.map(i => i + 1).join('·')), name); b.onclick = () => focusStop(idx[0]);
       const stem = el('i'); box.append(b, stem);
       const label = new CSS2DObject(box); label.center.set(.5, 1); label.position.set(s.x, hAt(s.x, s.z) + 9, s.z);
@@ -102,19 +103,20 @@ export function setupRoutes(ctx) {
 
   // ---- stop dots and names. Stops close together would hide each other's numbers, so a dot that would cover one already
   // placed stands higher on a longer stem. Names go to the right of their dot, or else to the left, only where they cover no
-  // other dot or name and stay inside the uncovered part of the screen. The focused stop goes first and always shows its
-  // name, then the start and end, then the rest in order. The itinerary lists every name, a tap on a dot shows it, and so
-  // does hovering on a desktop.
-  let placedKey = '', placedAt = 0, rect = null;
+  // other dot, stem or name, no chrome still over the map (ctx.covers: the rail, the credits row, the route bar…) and stay
+  // inside the uncovered part of the screen. The focused stop goes first and always shows its name, then the start and end,
+  // then the rest in order. The itinerary lists every name, a tap on a dot shows it, and so does hovering on a desktop.
+  let placedKey = '', placedAt = 0, rect = null, covers = [], rectAt = -1e9;
   const v = new THREE.Vector3();
   function placeNames(now) {
     if (!marks.length) return false;
     camera.updateMatrixWorld();
     const key = camera.matrixWorld.elements.map(e => e.toFixed(1)).join() + camera.projectionMatrix.elements.join() + innerWidth + 'x' + innerHeight + ':' + focusIndex + ':' + (traveller.mode ?? '');
     if (key === placedKey && now - placedAt < 500) return false;  // still camera: re-check twice a second (a sheet may have moved)
-    if (!rect || now - placedAt >= 500) rect = visibleRect();  // reads the page layout, so at most twice a second
+    // reads the page layout, so at most twice a second, also while the camera moves (a sheet may have gone meanwhile)
+    if (!rect || now - rectAt >= 500) { rect = visibleRect(); covers = ctx.covers?.() ?? []; rectAt = now; }
     placedKey = key; placedAt = now;
-    const R = rect, W = innerWidth, H = innerHeight, taken = [], active = labels[focusIndex];
+    const R = rect, W = innerWidth, H = innerHeight, taken = [], stems = [], active = labels[focusIndex];
     const hits = (r, list) => list.some(o => r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]);
     const inset = (r, d) => [r[0] + d, r[1] + d, r[2] - d, r[3] - d];
     const order = [...marks].sort((a, b) => (b.box === active) - (a.box === active) || a.rank - b.rank);
@@ -132,9 +134,11 @@ export function setupRoutes(ctx) {
       if (m.on) {
         const d0 = dot(0), below = taken.filter(o => hits(inset(d0, 6), [o]));
         const up = below.length ? Math.max(...below.map(o => d0[3] - o[1] + 2)) : 0;
-        if (up && up <= 2 * bh + 6 && dot(up)[1] >= R.top && !hits(inset(dot(up), 4), taken)) lift = Math.round(up);
+        if (up && up <= 2 * bh + 6 && dot(up)[1] >= R.top && !hits(inset(dot(up), 4), taken) && !hits(dot(up), covers)) lift = Math.round(up);
       }
       m.dot = dot(lift); if (m.on) taken.push(m.dot);
+      // the stem and its ground dot, from under the dot down to the stop's point: a name laid across them would be cut
+      m.stemBox = m.on ? [x - 4, m.dot[3], x + 4, (1 - v.y) / 2 * H + 5] : null; if (m.stemBox) stems.push(m.stemBox);
       if (lift !== m.lift) { m.lift = lift; m.stem.style.height = lift ? `${10 + lift}px` : ''; }
       // a stem that runs across the traveller fades, so it does not cut through the figure
       m.box.classList.toggle('veiled', !!body && m.on && hits([x - 4, m.dot[3], x + 4, (1 - v.y) / 2 * H + 6], [body]));
@@ -145,9 +149,15 @@ export function setupRoutes(ctx) {
         const nw = m.nw || [...m.name.textContent].length * 12 + 20, nh = m.nh || 22, [l, t, r, b] = m.dot, cy = (t + b) / 2;
         const rects = [[r + 3, cy - nh / 2, r + 3 + nw, cy + nh / 2], [l - 3 - nw, cy - nh / 2, l - 3, cy + nh / 2]];
         const inside = q => q[0] >= R.left + 4 && q[2] <= R.right - 4 && q[1] >= R.top + 2 && q[3] <= R.bottom - 2;
-        let k = rects.findIndex(q => inside(q) && !hits(q, taken));
-        // the focused stop always shows its name: clear of the traveller if either side allows it, else wherever it fits
-        if (k < 0 && m.box === active) { k = rects.findIndex(q => inside(q) && !(body && hits(q, [body]))); if (k < 0) k = Math.max(0, rects.findIndex(inside)); }
+        const others = stems.filter(o => o !== m.stemBox);
+        const clear = q => inside(q) && !hits(q, covers);
+        let k = rects.findIndex(q => clear(q) && !hits(q, taken) && !hits(q, others));
+        // the focused stop always shows its name: clear of chrome and the traveller if either side allows it, else wherever it fits
+        if (k < 0 && m.box === active) {
+          k = rects.findIndex(q => clear(q) && !(body && hits(q, [body])));
+          if (k < 0) k = rects.findIndex(clear); if (k < 0) k = rects.findIndex(inside);
+          if (k < 0) k = Math.max(0, rects.findIndex(q => q[0] >= 0 && q[2] <= W));  // at least on the screen
+        }
         if (k >= 0) { side = k ? -1 : 1; taken.push(rects[k]); }
       }
       m.box.classList.toggle('named', side !== 0); m.box.classList.toggle('flip', side === -1);
@@ -408,10 +418,13 @@ export function setupRoutes(ctx) {
     list.hidden = true; detail.hidden = false; renderDetail(route); draw(route); renderStrip(route); stripKey = '';
     updateHud();  // the route bar first, so the framing leaves room below it
     const to = fitPose(route); fly(to, 1600);
+    detail.focus?.({preventScroll: true});  // the chosen card has gone from the list: focus goes to the route's page
   }
   function close() {
+    const was = current, had = detail.contains(document.activeElement);
     stopPreview(); cancelFlight(); preview = null; current = null; clearDrawing(); strip.replaceChildren();
     detail.hidden = true; list.hidden = false; updateHud();
+    if (had && was) list.children[routes.indexOf(was)]?.focus?.({preventScroll: true});  // 全部路线: back to that route's card
   }
 
   // ---- route bar at the top of the map while the route is shown: name, where the preview is (or which stop is picked),
@@ -466,14 +479,15 @@ export function setupRoutes(ctx) {
       else li.classList.toggle('moving', moving && i === cur);
     }
     setProgress(preview ? preview.s / path.total : finished ? 1 : cur >= 0 && path ? path.stopAt[cur] / path.total : 0);
-    // scroll so the current stop starts at the left edge, or further if that is what it takes to show the next stop whole
+    // scroll so the current stop (the filled one, the most important) starts just inside the strip's padding, clear of its
+    // edge fade; the next stop may then be cut at the right edge, where the fade already says the strip goes on
     const key = `${current.id}:${cur}:${!!preview}`;
     if (key !== stripKey && hud.offsetParent) {  // not while a sheet or card hides the bar
       stripKey = key;
-      const here = strip.querySelector(`.rh-stop[data-i="${Math.max(0, cur)}"]`), ahead = preview && strip.querySelector(`.rh-stop[data-i="${cur + 1}"]`);
+      const here = strip.querySelector(`.rh-stop[data-i="${Math.max(0, cur)}"]`);
       if (here) {
-        const left = Math.max(here.offsetLeft - 8, ahead ? ahead.offsetLeft + ahead.offsetWidth - strip.clientWidth + 18 : 0);
-        strip.scrollTo?.({left: Math.max(0, left), behavior: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+        const pad = parseFloat(globalThis.getComputedStyle?.(strip).paddingLeft ?? 12);
+        strip.scrollTo?.({left: Math.max(0, here.offsetLeft - pad), behavior: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
       }
     }
   }
