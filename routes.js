@@ -25,7 +25,7 @@ const km = m => m >= 1000 ? `${(m / 1000).toFixed(1)} 公里` : `${Math.round(m 
 function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
 
 export function setupRoutes(ctx) {
-  const {routes, world, camera, controls, hAt, fly, pose, cancelFlight, openPanel, closeSheetsForRoute, onFrame, isMobile, visibleRect} = ctx;
+  const {routes, world, camera, controls, hAt, realH = h => h, fly, pose, cancelFlight, openPanel, closeSheetsForRoute, onFrame, isMobile, visibleRect} = ctx;
   const list = document.querySelector('#route-list'), detail = document.querySelector('#route-detail');
   const hud = document.querySelector('#route-hud'), strip = hud.querySelector('.rh-stops'), bar = hud.querySelector('.rh-bar i');
   const group = new THREE.Group(); group.renderOrder = 5; world.add(group);
@@ -343,7 +343,7 @@ export function setupRoutes(ctx) {
       leg.parts.forEach(part => {
         if (part.mode === 'bus') return;
         const pts = sample(part);
-        pts.forEach((p, k) => { if (k || !xs.length) { if (xs.length) s += Math.hypot(p.x - pts[Math.max(0, k - 1)].x, p.z - pts[Math.max(0, k - 1)].z); xs.push(s); ys.push(p.y - 2.6); } });
+        pts.forEach((p, k) => { if (k || !xs.length) { if (xs.length) s += Math.hypot(p.x - pts[Math.max(0, k - 1)].x, p.z - pts[Math.max(0, k - 1)].z); xs.push(s); ys.push(realH(p.y - 2.6)); } });
       });
     });
     marks.push({s, i: route.stops.length - 1});

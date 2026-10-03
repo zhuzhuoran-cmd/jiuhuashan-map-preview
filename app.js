@@ -3,7 +3,7 @@ import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js?v=20260929-camera-handoff';
-import {setupRoutes} from './routes.js?v=20261001-redesign';
+import {setupRoutes} from './routes.js?v=20261001-relief';
 import {setupGuide,kindLabel} from './guide.js?v=20260930-place-details';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
@@ -48,9 +48,32 @@ try{await init();}catch(e){console.error(e);fatal(/webgl/i.test(e.message)?'这�
 async function init(){
 const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20260930-place-photos'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
 unstall();
+// Lane from 芙蓉路 past the public toilet to 娘娘塔 and the 化城寺 forecourt, a shortcut the user drew on a screenshot
+// (2026-10-01; on no published map). Traced between the mapped footprints, about 1.2 m wide.
+// The town stream, from the houses west of 放生池 through 放生池 to 迎仙桥, runs underground (the owner, 2026-10-01):
+// not drawn, not painted on the ground. 放生池, the ponds and 九华河 stay.
+G.water=G.water.filter(w=>!(w.kind==='stream'&&w.pts.every(p=>p[0]>=-1900&&p[0]<=-1195&&p[1]>=-165&&p[1]<=230)));
+// Below 迎仙桥 the stream is not visible either until the road bridge at the hairpin (z ≈ -762): trim that reach.
+for(const w of G.water){const P=w.pts;if(w.kind!=='river'||Math.hypot(P[0][0]+1226,P[0][1]+159)>5)continue;const k=P.findIndex(p=>p[1]<-761.7);if(k>0){const a=P[k-1],b=P[k],t=(-761.7-a[1])/(b[1]-a[1]);w.pts=[[a[0]+(b[0]-a[0])*t,-761.7],...P.slice(k)];}}
+// 虎形山车站 (the owner, 2026-10-01): the ground between the bus loop and 三天门 is the station forecourt; a ticket office
+// stands in it (modelled further down), the U-shaped house west of it is a public toilet, and a lane runs from the
+// station past the backs of the 化城寺 buildings to 化城路 at the temple's front.
+G.areas.push({kind:'plaza',ring:[[-1338,-60],[-1372,10],[-1398,-1],[-1370,-70]]});
+{const t=G.places.find(p=>p.n==='公共厕所(AH-CIZ-0666)');if(t&&!G.places.some(p=>p.n==='公厕（虎形山车站旁）'))G.places.push({...t,n:'公厕（虎形山车站旁）',shortName:'公厕',x:-1424,z:-17,address:'虎形山车站旁',note:'',quality:'owner_reported',src:'业主指认（2026-10-01）',sourceFamilies:['owner'],rawCoordinate:undefined,coordinateMethod:undefined});}
+// Across the sloping station forecourt the lane is a paving strip laid flat on the ground (drape), not a level bed.
+G.roads.push({id:'lane-hushan-plaza',name:'',kind:'alley',width:1.5,drape:true,pts:[[-1341.3,-48.2],[-1376,0]]});
+G.roads.push({id:'lane-hushan-huacheng',name:'',kind:'alley',width:1.5,pts:[[-1376,0],[-1386,27],[-1385,56],[-1378,64],[-1357,101],[-1350.5,108],[-1350.5,114.5],[-1355.8,120.5],[-1355,126],[-1352,133],[-1349.5,140]]});
+// Lane from 莲花大道 past 又一村别墅 to 九华镇派出所 (the owner, 2026-10-01; not in OSM), traced between the footprints.
+G.roads.push({id:'lane-police',name:'',kind:'alley',width:2,pts:[[-1408.5,-146.8],[-1424,-140],[-1450,-128.5],[-1475,-117],[-1481,-116.5],[-1487.5,-110]]});
+G.roads.push({id:'lane-huacheng',name:'',kind:'alley',width:1.2,pts:[[-1330.4,238.6],[-1330.4,226.5],[-1330.6,224.6],[-1334.5,222.3],[-1341.5,219.6],[-1344.6,211],[-1347.6,205.6],[-1348.4,201]]}); // ends stop at the kerb of 芙蓉路 and the edge of the 化城路 footway // west of the small hip-roofed house, between the two post-office blocks and the diamond-shaped house
 const {W,D,N}=M, bytes=Uint8Array.from(atob(M.h),c=>c.charCodeAt(0)),dv=new DataView(bytes.buffer),H=new Float32Array(N*N);
 for(let i=0;i<H.length;i++)H[i]=dv.getUint16(i*2,true)/4;
-let EX=1;const hMin=Math.min(...H);
+// Relief exaggeration (the owner, 2026-10-01: ×1.6 reads closer to the real mountain). It is baked into the height grid,
+// measured up from the lowest point, and every building's base is moved by the same rule, so houses ride the taller
+// slopes without being stretched themselves. realH() turns a scene height back into true elevation (altitude readouts,
+// tree and rock bands). The 地形高度 slider rescales from here (world.scale.y = EX/EXAG).
+const EXAG=1.6;let EX=EXAG;const hMin=Math.min(...H);for(let i=0;i<H.length;i++)H[i]=hMin+(H[i]-hMin)*EXAG;
+const realH=h=>hMin+(h-hMin)/EXAG;for(const b of G.buildings)b.base=hMin+(b.base-hMin)*EXAG;
 function rawHeight(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-1),0,N-1.001),i=u|0,j=v|0,a=u-i,b=v-j;return(H[j*N+i]*(1-a)+H[j*N+i+1]*a)*(1-b)+(H[(j+1)*N+i]*(1-a)+H[(j+1)*N+i+1]*a)*b;}
 const checkpoint=G.places.find(p=>p.model?.kind==='entrance-checkpoint'),checkpointSite=createCheckpointSite(checkpoint,rawHeight);
 function hAt(x,z){const h=rawHeight(x,z);return checkpointSite?checkpointSite.height(x,z,h):h;}
@@ -63,7 +86,7 @@ const resolutionCeiling=()=>Math.min(devicePixelRatio,emergency?.8:TIERS[tier].d
 let idleResolution=false,resolutionChangedAt=0;
 const dprCap=()=>resolution.pixelRatio(idleResolution),shadows=()=>TIERS[tier].shadows&&!mobile&&!lowPower;
 function syncResolution(idle=false,now=performance.now()){idleResolution=idle;const ratio=dprCap();if(Math.abs(renderer.getPixelRatio()-ratio)<.01)return;renderer.setPixelRatio(ratio);resolutionChangedAt=now;}
-renderer.setPixelRatio(dprCap());renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
+renderer.setPixelRatio(dprCap());renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
 renderer.shadowMap.enabled=shadows();renderer.shadowMap.type=THREE.PCFSoftShadowMap;$('#stage').appendChild(renderer.domElement);
 // Phones can drop the GPU context under memory pressure (other tabs, backgrounding); say so instead of leaving a frozen frame.
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();fatal('设备图形内存不足，三维画面已停止。关闭其他页面后点“重新加载”。');});
@@ -72,29 +95,34 @@ const labels=new CSS2DRenderer();labels.domElement.className='labels';$('#stage'
 // route parents and world matrices; CSS2D no longer walks all the geometry again.
 const labelRoot=new THREE.Group();labelRoot.matrixWorldAutoUpdate=false;
 const attachedLabels=[];let labelsDirty=true,labelPasses=0,labelSelections=0,coversDirty=true,chromeRects=[],coverMeasures=0;
-const scene=new THREE.Scene();scene.fog=new THREE.FogExp2('#ceded9',.000072);
+// Clear-day air: only a faint blue haze the colour of #stage's horizon, its density following the viewing distance
+// (syncMist) so the subject is always crisp and just the farthest ridges soften against the sky.
+const scene=new THREE.Scene();scene.fog=new THREE.FogExp2('#f4dcc0',.0002);
+const syncMist=()=>{scene.fog.density=.13/clamp(camera.position.distanceTo(controls.target),600,20000);};
 const world=new THREE.Group(),built=new THREE.Group(),forest=new THREE.Group(),trailGroup=new THREE.Group(),decor=new THREE.Group();scene.add(world);world.add(built,forest,trailGroup,decor);
 const camera=new THREE.PerspectiveCamera(43,1,.7,32000);const controls=createMapControls(camera,$('#stage'),onMapTap);
 controls.enableDamping=true;controls.dampingFactor=.075;controls.minDistance=10;controls.maxDistance=12500;controls.maxPolarAngle=Math.PI*.482;controls.zoomToCursor=true;controls.screenSpacePanning=false;
-scene.add(new THREE.HemisphereLight('#ebf4f2','#5c6552',1.35));const sun=new THREE.DirectionalLight('#fff2d9',2.65);sun.position.set(-2000,3400,-1100);sun.castShadow=shadows();sun.shadow.mapSize.set(4096,4096);Object.assign(sun.shadow.camera,{left:-850,right:850,top:850,bottom:-850,near:10,far:6500});sun.shadow.bias=-.0001;sun.shadow.normalBias=.7;scene.add(sun,sun.target);
+scene.add(new THREE.HemisphereLight('#fff6e8','#7a8a70',1.1));const sun=new THREE.DirectionalLight('#fff0d6',2.6);sun.position.set(-2600,1900,-1500);sun.castShadow=shadows();sun.shadow.mapSize.set(4096,4096);Object.assign(sun.shadow.camera,{left:-850,right:850,top:850,bottom:-850,near:10,far:6500});sun.shadow.bias=-.0001;sun.shadow.normalBias=.7;scene.add(sun,sun.target);
 const color=c=>new THREE.Color(c);
 // Phones and tablets shade with Lambert (diffuse only): the scene is matte almost everywhere, so it looks nearly the same at
 // a fraction of the per-pixel cost. Gloss-only parameters are dropped there.
 const PBR_ONLY=['roughness','metalness','roughnessMap','metalnessMap','envMapIntensity'];
 const lambertParams=o=>{const q={...o};for(const k of PBR_ONLY)delete q[k];return q;};
-function StdMat(o={}){const m=TIERS[tier].pbr?new THREE.MeshStandardMaterial(o):new THREE.MeshLambertMaterial(lambertParams(o));m.userData.params=o;return m;}
+// 卡通光影: every lit surface shades in three flat steps (light, mid, shadow) through one tiny ramp; costs about what Lambert does.
+const TOON_RAMP=(()=>{const t=new THREE.DataTexture(new Uint8Array([168,168,168,255,214,214,214,255,255,255,255,255]),3,1);t.minFilter=t.magFilter=THREE.NearestFilter;t.needsUpdate=true;return t;})();
+function StdMat(o={}){const m=new THREE.MeshToonMaterial({...lambertParams(o),gradientMap:TOON_RAMP});m.userData.params=o;return m;}
 // The other shading kind of a material, made once and cached both ways; settings changed after creation are carried over.
 const CARRY=['side','transparent','opacity','depthWrite','depthTest','polygonOffset','polygonOffsetFactor','polygonOffsetUnits','alphaTest','vertexColors','map','emissiveMap','emissiveIntensity','fog','toneMapped','flatShading','name'];
-function twinOf(m,pbr){if(!m.userData.params||m.isMeshStandardMaterial===pbr)return m;if(m.userData.twin)return m.userData.twin;
+function twinOf(m,pbr){if(m.isMeshToonMaterial||!m.userData.params||m.isMeshStandardMaterial===pbr)return m;if(m.userData.twin)return m.userData.twin;
  const t=pbr?new THREE.MeshStandardMaterial(m.userData.params):new THREE.MeshLambertMaterial(lambertParams(m.userData.params));
  for(const k of CARRY)if(k in m&&k in t)t[k]=m[k];t.color?.copy(m.color);t.emissive?.copy(m.emissive);t.onBeforeCompile=m.onBeforeCompile;
  t.userData.params=m.userData.params;t.userData.twin=m;m.userData.twin=t;return t;}
 const mat=(c,more={})=>StdMat({color:c,roughness:.9,metalness:0,...more});
 // Tree, bamboo and lantern shapes at two levels of detail; tiers below 高清 use the coarse ones (see setShapes).
 const SHAPES={};let lanternMesh=null;
-function shapes(hi){return SHAPES[hi]??=hi?{leaf:new THREE.SphereGeometry(1,7,5),pine:new THREE.ConeGeometry(1,1,9),trunk:new THREE.CylinderGeometry(.18,.3,1,5),bamboo:new THREE.SphereGeometry(1,7,6),lantern:new THREE.SphereGeometry(.24,10,8)}
+function shapes(hi){return SHAPES[hi]??=hi?{leaf:softBlob(),pine:new THREE.ConeGeometry(1,1,6),trunk:new THREE.CylinderGeometry(.18,.3,1,4,1,true),bamboo:softBlob(),lantern:new THREE.SphereGeometry(.24,10,8)}
  :{leaf:softBlob(),pine:new THREE.ConeGeometry(1,1,6,1,true),trunk:new THREE.CylinderGeometry(.18,.3,1,3,1,true),bamboo:softBlob(),lantern:softBlob().scale(.24,.24,.24)};}
-const stone=mat('#b9b7a4'),wood=mat('#594937'),gold=mat('#ae833d',{roughness:.67}),red=mat('#943f2d'),roofDark=mat('#59605c'),glass=mat('#466266',{roughness:.3,metalness:.15});
+const stone=mat('#b9b7a4'),wood=mat('#594937'),gold=mat('#e0a83a',{roughness:.67}),red=mat('#c0452f'),roofDark=mat('#77889a'),glass=mat('#466266',{roughness:.3,metalness:.15});
 const boxGeo=new THREE.BoxGeometry(1,1,1),cylGeo=new THREE.CylinderGeometry(1,1,1,8);
 function box(parent,x,y,z,w,h,d,m){const o=new THREE.Mesh(boxGeo,m);o.position.set(x,y+h/2,z);o.scale.set(w,h,d);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;}
 function cylinder(parent,x,y,z,r,h,m){const o=new THREE.Mesh(cylGeo,m);o.position.set(x,y+h/2,z);o.scale.set(r,h,r);o.castShadow=true;parent.add(o);return o;}
@@ -109,26 +137,42 @@ class Batch{
  quad(a,b,c,d,co,uvs=null,id=-1){this.tri(a,b,c,co,uvs?[uvs[0],uvs[1],uvs[2]]:null,id);this.tri(a,c,d,co,uvs?[uvs[0],uvs[2],uvs[3]]:null,id);}
  mesh(material,parent){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(this.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(this.c,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(this.uv,2));g.computeVertexNormals();const m=new THREE.Mesh(g,material);m.castShadow=true;m.receiveShadow=true;m.userData.triangleIds=this.ids;parent.add(m);return m;}
 }
+const smoothstep01=t=>t*t*(3-2*t);
+// Woods (2026-10-02): the forest grows in groves with clearings between them, like the patches on a hand-drawn map.
+// groveN is a smooth 0–1 field (three octaves of value noise, ~400 m / 160 m / 60 m); the canopy of each grove is
+// painted into the ground texture as a darker mottled green, and only a moderate number of 3D trees stand in it.
+const groveN=(()=>{const R=rng(4711),G2=256,g=new Float32Array(G2*G2);for(let i=0;i<g.length;i++)g[i]=R();
+ const vn=(x,z)=>{const i=Math.floor(x),j=Math.floor(z),a=x-i,b=z-j,s=smoothstep01,at=(u,v)=>g[((v&255)*G2)+(u&255)];return(at(i,j)*(1-s(a))+at(i+1,j)*s(a))*(1-s(b))+(at(i,j+1)*(1-s(a))+at(i+1,j+1)*s(a))*s(b);};
+ return(x,z)=>(.55*vn(x/400+31,z/400+17)+.3*vn(x/160+5,z/160+93)+.15*vn(x/60+71,z/60+3));})();
+const groveAt=(x,z,hr)=>hr<100||hr>1310?0:clamp((groveN(x,z)-.42)/.2,0,1);
 const TEX=lowPower?1024:2048,cv=document.createElement('canvas');cv.width=cv.height=TEX;const ctx=cv.getContext('2d');
 const px=(x,z)=>[(x+W/2)/W*TEX,(z+D/2)/D*TEX];
 const mask=document.createElement('canvas');mask.width=mask.height=1024;const mc=mask.getContext('2d');const mx=(x,z)=>[(x+W/2)/W*1024,(z+D/2)/D*1024];
 function drawPath(context,pts,to,close=false){context.beginPath();pts.forEach((p,i)=>{const q=to(...p);i?context.lineTo(...q):context.moveTo(...q);});if(close)context.closePath();}
-const im=ctx.createImageData(TEX,TEX),rand=rng(23),up=new THREE.Vector3(),light=new THREE.Vector3(-.55,.74,-.38).normalize();
+const im=ctx.createImageData(TEX,TEX),rand=rng(23),up=new THREE.Vector3(),light=new THREE.Vector3(-.72,.53,-.42).normalize();
 for(let j=0;j<TEX;j++)for(let i=0;i<TEX;i++){
- const x=(i/TEX-.5)*W,z=(j/TEX-.5)*D,h=hAt(x,z),dx=(hAt(x+12,z)-hAt(x-12,z))/24,dz=(hAt(x,z+12)-hAt(x,z-12))/24;
- up.set(-dx,1,-dz).normalize();const rock=clamp((1-up.y-.27)*2.8,0,.67)*(h>720?1:.35);const grain=(rand()-.5)*10;
- const coarse=Math.sin(x*.008)*Math.cos(z*.007)*4;const rgb=[61+coarse,83+coarse,54+coarse];const lit=.79+.19*Math.max(0,up.dot(light));const k=(j*TEX+i)*4;
- for(let q=0;q<3;q++)im.data[k+q]=(rgb[q]*(1-rock)+[150,148,130][q]*rock)*lit+grain;im.data[k+3]=255;
+ const x=(i/TEX-.5)*W,z=(j/TEX-.5)*D,h=hAt(x,z),xp=hAt(x+30,z),xm=hAt(x-30,z),zp=hAt(x,z+30),zm=hAt(x,z-30),dx=(xp-xm)/60,dz=(zp-zm)/60;
+ // 晕渲 as on hand-drawn maps: ridges (convex) lit, gullies (concave) shaded
+ const ridge=clamp(-(xp+xm+zp+zm-4*h)/900*14,-.22,.22);
+ up.set(-dx,1,-dz).normalize();const hr=realH(h),upR=1/Math.sqrt(1+(dx*dx+dz*dz)/(EXAG*EXAG)),rock=clamp((1-upR-.27)*2.8,0,.67)*(hr>720?1:.35);const grain=(rand()-.5)*10;
+ const coarse=Math.sin(x*.008)*Math.cos(z*.007)*4,e0=clamp((hr-430)/760,0,1),e=e0+(Math.floor(e0*5)+smoothstep01(Math.min(1,Math.max(0,(e0*5%1-.35)/.3)))-e0*5)/5*.6,lo=clamp(1-e*2,0,1),hi=clamp(e*2-1,0,1),sh=Math.max(0,up.dot(light));
+ const rgb=[0,1,2].map(q=>[136,184,96][q]*lo+[86,146,74][q]*(1-lo-hi)+[108,146,92][q]*hi+coarse);const lit=(.55+.55*sh)*(1+ridge),k=(j*TEX+i)*4;
+ {const gv=groveAt(x,z,hr)*(1-rock*1.4),mot=.82+.3*groveN(x*7.3,z*7.3);if(gv>0)for(let q=0;q<3;q++)rgb[q]+=([44,104,62][q]*mot-rgb[q])*smoothstep01(Math.min(1,gv))*.78;}
+ for(let q=0;q<3;q++)im.data[k+q]=(rgb[q]*(1-rock)+[200,190,164][q]*rock)*lit+[6,4,-6][q]*sh+[-6,-2,8][q]*(1-sh)+grain;im.data[k+3]=255;
 }
 ctx.putImageData(im,0,0);
 // Plazas are paved open ground (traced on imagery): stone colour, and no trees or bamboo on them.
-for(const a of G.areas){if(!['residential','religious','parking','water','grass','meadow','plaza','site'].includes(a.kind))continue;drawPath(ctx,a.ring,px,true);ctx.fillStyle=({residential:'#b7b6a0',religious:'#bdb9a6',parking:'#92998f',water:'#588e90',grass:'#849268',meadow:'#899767',plaza:'#b9b4a1',site:'#a9a89c'})[a.kind];ctx.fill();if(['residential','religious','parking','water','plaza','site'].includes(a.kind)){drawPath(mc,a.ring,mx,true);mc.fill();}}
+for(const a of G.areas){if(!['residential','religious','parking','water','grass','meadow','plaza','site'].includes(a.kind))continue;drawPath(ctx,a.ring,px,true);ctx.fillStyle=({residential:'#b7b6a0',religious:'#bdb9a6',parking:'#92998f',water:'#4fa6d8',grass:'#849268',meadow:'#899767',plaza:'#b9b4a1',site:'#a9a89c'})[a.kind];ctx.fill();if(['residential','religious','parking','water','plaza','site'].includes(a.kind)){drawPath(mc,a.ring,mx,true);mc.fill();}}
 // Roofprint footprints and actual road lines determine the settlement, never random houses.
 ctx.lineJoin='round';for(const b of G.buildings){if(b.style==='rural'||b.style==='tiantai')continue;drawPath(ctx,b.ring,px,true);ctx.strokeStyle='#a9a797';ctx.lineWidth=Math.max(1.2,7/W*TEX);ctx.stroke();}
 for(const b of G.buildings){drawPath(ctx,b.ring,px,true);ctx.fillStyle='#bcbcaf';ctx.fill();drawPath(mc,b.ring,mx,true);mc.fill();mc.lineWidth=3;mc.stroke();}
-for(const r of G.roads){drawPath(ctx,r.pts,px);ctx.lineJoin=ctx.lineCap='round';ctx.strokeStyle=['path','footway','steps'].includes(r.kind)?'#b6ab8c':'#858e85';ctx.lineWidth=Math.max(.8,r.width/W*TEX);ctx.stroke();drawPath(mc,r.pts,mx);mc.lineWidth=Math.max(2,(r.width+7)/W*1024);mc.stroke();}
-for(const r of G.water){drawPath(ctx,r.pts,px);ctx.strokeStyle='#648f8d';ctx.lineWidth=r.kind==='river'?3:1;ctx.stroke();drawPath(mc,r.pts,mx);mc.lineWidth=5;mc.stroke();}
+for(const r of G.roads){drawPath(mc,r.pts,mx);mc.lineWidth=Math.max(2,(r.width+7)/W*1024);mc.stroke();}
+for(const r of G.water){drawPath(ctx,r.pts,px);ctx.strokeStyle='#4a9fd0';ctx.lineWidth=r.kind==='river'?3:1;ctx.stroke();drawPath(mc,r.pts,mx);mc.lineWidth=5;mc.stroke();}
 const maskPixels=mc.getImageData(0,0,1024,1024).data;const blocked=(x,z)=>{const [i,j]=mx(x,z).map(Math.floor);return i<0||j<0||i>=1024||j>=1024||maskPixels[(j*1024+i)*4+3]>0;};
+// Road beds: terrain fragments inside a road's graded corridor are discarded (the road and its cut/fill shoulders take
+// their place), so a level road is never buried by the hillside on its uphill side. Filled where the roads are built.
+const RMASK=lowPower?2048:4096,roadMaskCv=document.createElement('canvas');roadMaskCv.width=roadMaskCv.height=RMASK;const roadMaskCtx=roadMaskCv.getContext('2d');
+const roadMask=new THREE.CanvasTexture(roadMaskCv);roadMask.flipY=false;roadMask.generateMipmaps=false;roadMask.minFilter=roadMask.magFilter=THREE.LinearFilter;
 const texture=new THREE.CanvasTexture(cv);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=renderer.capabilities.getMaxAnisotropy();
 const tg=new THREE.PlaneGeometry(W,D,N-1,N-1).rotateX(-Math.PI/2);for(let k=0;k<H.length;k++)tg.attributes.position.setY(k,H[k]);tg.computeVertexNormals();
 const terrain=new THREE.Mesh(tg,mat('#ffffff',{map:texture}));terrain.receiveShadow=true;world.add(terrain);
@@ -144,18 +188,22 @@ const inTerrainCut=(x,z)=>{const o=terrainCut.o,c=terrainCut.s,dx=x-o.x,dz=z-o.y
  const n1=oct(64,11),n2=oct(16,12),n3=oct(8,13);
  for(let j=0;j<256;j++)for(let i=0;i<256;i++){const x=i/256,y=j/256,k=(j*256+i)*4;const fine=.55*n1(x,y)+.45*dr();dimg.data[k]=fine*255;dimg.data[k+1]=(.6*n2(x,y)+.4*n3(x,y))*255;dimg.data[k+2]=128;dimg.data[k+3]=255;}
  dx.putImageData(dimg,0,0);const detailTex=new THREE.CanvasTexture(dc);detailTex.wrapS=detailTex.wrapT=THREE.RepeatWrapping;detailTex.anisotropy=8;
- terrain.material.onBeforeCompile=sh=>{sh.uniforms.detailMap={value:detailTex};sh.uniforms.cutO={value:terrainCut.o};sh.uniforms.cutS={value:terrainCut.s};sh.uniforms.checkpointO={value:checkpointCut.o};sh.uniforms.checkpointS={value:checkpointCut.s};
+ terrain.material.onBeforeCompile=sh=>{sh.uniforms.detailMap={value:detailTex};sh.uniforms.roadMask={value:roadMask};sh.uniforms.terrainWD={value:new THREE.Vector2(W,D)};sh.uniforms.cutO={value:terrainCut.o};sh.uniforms.cutS={value:terrainCut.s};sh.uniforms.checkpointO={value:checkpointCut.o};sh.uniforms.checkpointS={value:checkpointCut.s};
   sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vDetailPos;').replace('#include <project_vertex>','#include <project_vertex>\nvDetailPos=(modelMatrix*vec4(transformed,1.0)).xyz;');
-  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vDetailPos;uniform sampler2D detailMap;uniform vec4 cutO;uniform vec4 cutS;').replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{vec2 dq=vDetailPos.xz-cutO.xy;float cu=dot(dq,cutO.zw),cv=dot(dq,vec2(cutO.w,-cutO.z));if(cu>cutS.x&&cu<cutS.y&&cv>cutS.z&&cv<cutS.w)discard;}').replace('#include <map_fragment>','#include <map_fragment>\n{float near=smoothstep(1600.0,150.0,length(vDetailPos-cameraPosition));float fine=texture2D(detailMap,vDetailPos.xz/7.0).r;float mid=texture2D(detailMap,vDetailPos.xz/61.0).g;diffuseColor.rgb*=mix(1.0,0.74+0.38*fine+0.22*(mid-0.5),near);}');
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vDetailPos;uniform sampler2D detailMap;uniform vec4 cutO;uniform vec4 cutS;uniform sampler2D roadMask;uniform vec2 terrainWD;').replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\nif(texture2D(roadMask,vDetailPos.xz/terrainWD+.5).r>.5)discard;\n{vec2 dq=vDetailPos.xz-cutO.xy;float cu=dot(dq,cutO.zw),cv=dot(dq,vec2(cutO.w,-cutO.z));if(cu>cutS.x&&cu<cutS.y&&cv>cutS.z&&cv<cutS.w)discard;}').replace('#include <map_fragment>','#include <map_fragment>\n{float near=smoothstep(1600.0,150.0,length(vDetailPos-cameraPosition));float fine=texture2D(detailMap,vDetailPos.xz/7.0).r;float mid=texture2D(detailMap,vDetailPos.xz/61.0).g;diffuseColor.rgb*=mix(1.0,0.74+0.38*fine+0.22*(mid-0.5),near);}');
   const prev=sh.fragmentShader;sh.fragmentShader=prev.replace('uniform vec4 cutS;','uniform vec4 cutS;uniform vec4 checkpointO;uniform vec4 checkpointS;').replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n{vec2 dq=vDetailPos.xz-checkpointO.xy;float cu=dot(dq,checkpointO.zw),cv=dot(dq,vec2(-checkpointO.w,checkpointO.z));if(cu>checkpointS.x&&cu<checkpointS.y&&cv>checkpointS.z&&cv<checkpointS.w)discard;}');};
  terrain.material.needsUpdate=true;}
 const skirt=new Batch();const sides=[];for(let i=0;i<N;i++)sides.push([i,0]);for(let j=1;j<N;j++)sides.push([N-1,j]);for(let i=N-2;i>=0;i--)sides.push([i,N-1]);for(let j=N-2;j>=0;j--)sides.push([0,j]);
 for(let i=1;i<sides.length;i++){const [a,b]=sides[i-1],[c,d]=sides[i],x=-W/2+a*W/(N-1),z=-D/2+b*D/(N-1),xx=-W/2+c*W/(N-1),zz=-D/2+d*D/(N-1);skirt.quad([x,H[b*N+a],z],[xx,H[d*N+c],zz],[xx,hMin-90,zz],[x,hMin-90,z],'#8f8974');}
-skirt.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),world);
+{const sm=skirt.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),world),P=sm.geometry.attributes.position,C=sm.geometry.attributes.color,top=color('#6c6f5c'),foot=color('#f3d6b2'),c=new THREE.Color();
+ for(let i=0;i<P.count;i++){c.copy(top).lerp(foot,P.getY(i)<hMin-80?1:0);C.setXYZ(i,c.r,c.g,c.b);}sm.castShadow=sm.receiveShadow=false;}
 $('#load-text').textContent='按真实轮廓重建屋顶、窗户和沿街立面';
 await new Promise(requestAnimationFrame);
 
-function textureTile(mode){const c=document.createElement('canvas');c.width=c.height=256;const ct=c.getContext('2d');ct.fillStyle=mode==='roof'?'#aaa99f':'#e6e3d9';ct.fillRect(0,0,256,256);const r=rng(mode==='roof'?44:98);for(let i=0;i<3500;i++){ct.fillStyle=`rgba(${r()>.5?'255,255,255':'50,55,44'},${r()*.07})`;ct.fillRect(r()*256,r()*256,1+r()*3,1+r()*2);}if(mode==='roof'){for(let x=0;x<256;x+=12){ct.fillStyle='#e3dfd550';ct.fillRect(x,0,3,256);ct.fillStyle='#222c2c60';ct.fillRect(x+8,0,2,256);}for(let y=0;y<256;y+=20){ct.fillStyle='#23333145';ct.fillRect(0,y,256,1);}}const tex=new THREE.CanvasTexture(c);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=8;return tex;}
+function textureTile(mode){const c=document.createElement('canvas');c.width=c.height=256;const ct=c.getContext('2d');ct.fillStyle=mode==='roof'?'#e4e2da':'#e6e3d9';ct.fillRect(0,0,256,256);const r=rng(mode==='roof'?44:98);for(let i=0;i<3500;i++){ct.fillStyle=`rgba(${r()>.5?'255,255,255':'50,55,44'},${r()*.07})`;ct.fillRect(r()*256,r()*256,1+r()*3,1+r()*2);}if(mode==='roof'){for(let x=0;x<256;x+=12){ct.fillStyle='#e3dfd540';ct.fillRect(x,0,3,256);ct.fillStyle='#222c2c2c';ct.fillRect(x+8,0,2,256);}for(let y=0;y<256;y+=20){ct.fillStyle='#23333122';ct.fillRect(0,y,256,1);}}const tex=new THREE.CanvasTexture(c);tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=8;return tex;}
+// Art grading of the surveyed colours (research/r3): same hues, toned to sit with the ink-green hills.
+const ROOF_TONE={'#6A6F72':'#7b8da2','#8A4B35':'#a9483a','#B4623F':'#c9603d','#D9A93A':'#f6c02c','#7A2E26':'#b63a2a','#8C6A3E':'#b98a45','#3D4141':'#6f7f92','#C0582E':'#dc6435'},
+ WALL_TONE={'#F0EEE8':'#fbf4e6','#D8D6CF':'#e6dece','#EAEAE6':'#f5efe2','#D8A035':'#f2b33a','#E4D9C4':'#f3e3c0'};
 const roofTex=textureTile('roof'),wallTex=textureTile('wall');const walls=new Batch(),roofs=new Batch(),foundation=new Batch(),windowBatch=new Batch(),trim=new Batch(),signBatch=new Batch();
 const roofEdges=[];const detailedGroups=[];const pickables=[];
 // Details a phone cannot resolve from afar (windows ~1 m wide, lanterns 0.5 m): tiers below 高清 hide them beyond a
@@ -163,6 +211,11 @@ const roofEdges=[];const detailedGroups=[];const pickables=[];
 const farDetail=[];// Footprints drawn by hand-built landmarks below (化城寺, 万佛塔, 肉身宝殿 main hall, 北门, 地藏禅寺 hall) are not also extruded.
 const ROUSHEN_ID='overture-6eed6b02-0a6b-40b7-9326-5247a9383063';const replaced=new Set([609757872,609561169,G.buildings.find(b=>b.id===ROUSHEN_ID)?.osmId,609909704,609909706]); // + 肉身宝殿北门 and the 地藏禅寺 hall behind it
 for(const a of G.areas)for(const id of a.frame?.replaces||[])replaced.add(G.buildings.find(b=>b.id===id)?.osmId); // footprints inside hand-built sites (居之林)
+// Palace-style halls (宫殿式, glazed-tile roofs) are rebuilt by templeHall() further down.
+const GLAZED=['#D9A93A','#7A2E26','#C0582E'],palaceHalls=G.buildings.filter(b=>b.style==='temple'&&b.area>=240&&(GLAZED.includes(b.roofColor)||b.osmId===609990009));
+for(const b of palaceHalls)replaced.add(b.osmId);
+// Public toilets drawn as themselves (below), by place name → footprint.
+const TOILETS={'公厕（东崖宾馆附近）':609892484,'公厕（虎形山车站旁）':609980796},TOILET_IDS=new Set(Object.values(TOILETS));for(const id of TOILET_IDS)replaced.add(id);
 // Street signs carry real names from public listings, matched to the footprint that contains (or is within 8 m of) the pin.
 const SIGN_W=256,SIGN_H=48,SIGN_COLS=8,SIGN_ROWS=lowPower?24:44,signTexts=[];
 const signCanvas=document.createElement('canvas');signCanvas.width=SIGN_W*SIGN_COLS;signCanvas.height=SIGN_H*SIGN_ROWS;const sgc=signCanvas.getContext('2d');
@@ -175,10 +228,10 @@ const lanternPts=[],acPts=[];const shade=(hex,k)=>{const c=new THREE.Color(hex);
 for(let bi=0;bi<G.buildings.length;bi++){
  const b=G.buildings[bi];if(replaced.has(b.osmId))continue;
  const ring=b.ring,top=b.base+b.wallHeight,rand=rng(b.osmId),tone=rand(),temple=b.style==='temple';
- const wallCol=b.wallColor||(b.precinct==='百岁宫'?'#e8dfc2':b.kind==='temple'?(b.roofColor==='gold'?'#cdb787':'#e6dbc1'):'#e9e6dc');
- const roofHex=b.roofColor?.startsWith('#')?b.roofColor:b.roofColor==='gold'?'#c1a14e':'#6f756c',roofCol=shade(roofHex,(tone-.5)*.06);
- const levels=b.levels||2,floorH=(b.wallHeight-.35)/levels,lattice=!!b.lattice,eave=b.eave??.5;
- const frameCol=lattice?'#3a2a1f':'#3c3f42',glassA=lattice?'#2f2721':'#465f61',glassB=lattice?'#3a3029':'#5b6f6f';
+ const wallCol=WALL_TONE[b.wallColor]||b.wallColor||(b.precinct==='百岁宫'?'#e8dfc2':b.kind==='temple'?(b.roofColor==='gold'?'#cdb787':'#e6dbc1'):'#ebe6d9');
+ const roofHex=ROOF_TONE[b.roofColor]||(b.roofColor?.startsWith('#')?b.roofColor:b.roofColor==='gold'?'#c1a14e':'#5b6062'),roofCol=shade(roofHex,(tone-.5)*.06);
+ const levels=b.levels||2,floorH=(b.wallHeight-.35)/levels,lattice=!!b.lattice,eave=(b.eave??.5)*1.6; // deep cartoon eaves
+ const glassA=lattice?'#2f2721':'#56676a',glassB=lattice?'#3a3029':'#687675';
  let signed=0;ring.forEach((p,i)=>{const q=ring[(i+1)%ring.length];signed+=p[0]*q[1]-q[0]*p[1];});
  let signDone=true;/* no business signs: the map names no business except 居之林 (user 2026-09-28) */const party=new Set(b.partyEdges||[]);
  for(let i=0;i<ring.length;i++){
@@ -188,7 +241,7 @@ for(let bi=0;bi<G.buildings.length;bi++){
   // halls stand on a stone terrace (台基) instead.
   const ya=Math.min(b.base,hAt(...a)-.12),yd=Math.min(b.base,hAt(...d)-.12),fa=temple?b.base+.5:Math.min(b.base+.5,ya+1.2),fdn=temple?b.base+.5:Math.min(b.base+.5,yd+1.2);
   walls.quad([a[0],fa,a[1]],[d[0],fdn,d[1]],[d[0],top,d[1]],[a[0],top,a[1]],wallCol,[[0,fa/8],[len/8,fdn/8],[len/8,top/8],[0,top/8]],bi);
-  foundation.quad([a[0],ya,a[1]],[d[0],yd,d[1]],[d[0],fdn,d[1]],[a[0],fa,a[1]],'#9c9a93',null,bi);
+  if(fa-ya>.25||fdn-yd>.25)foundation.quad([a[0],ya,a[1]],[d[0],yd,d[1]],[d[0],fdn,d[1]],[a[0],fa,a[1]],'#9c9a93',null,bi); // flat ground: the footing is hidden anyway
   // Walls shared with a neighbouring footprint stay blank: nothing may poke into the house next door.
   if(party.has(i))continue;
   const nx=(signed>0?1:-1)*(d[1]-a[1])/len,nz=(signed>0?-1:1)*(d[0]-a[0])/len,ux=(d[0]-a[0])/len,uz=(d[1]-a[1])/len;
@@ -198,28 +251,21 @@ for(let bi=0;bi<G.buildings.length;bi++){
   const isFront=i===b.front&&b.frontDist!=null&&b.frontDist<14,shop=b.shopfront&&isFront&&len>2.4;
   if(len>2.4){const num=Math.max(1,Math.floor(len/(temple?3.1:3.3))),lmin=temple?0:-Math.floor((b.base+.35-Math.min(fa,fdn))/floorH);
    for(let l=lmin;l<levels;l++){if(l===0&&shop)continue;
-    for(let n=0;n<num;n++){const along=(n+.5)*len/num,y=b.base+.35+l*floorH+(l===0?.95:.8),wh=Math.min(1.75,floorH*.54),ww=temple?1.3:lattice?1.1:1.4;
+    for(let n=0;n<num;n++){if(i!==b.front||l!==levels-1||n%2)continue; // hand-drawn: one sparse row of plain windows, street front only
+     const along=(n+.5)*len/num,y=b.base+.35+l*floorH+(l===0?.95:.8),wh=Math.min(1.75,floorH*.54),ww=temple?1.3:lattice?1.1:1.4;
      if(l<0&&y<fa+(fdn-fa)*along/len+.35)continue; // lower storeys only where the wall stands clear of the footing
-     faceQuad(trim,along,y-.1,ww+.18,wh+.18,frameCol);faceQuad(windowBatch,along,y,ww,wh,(n+l)%3?glassA:glassB,.055);
-     if(lattice){faceQuad(trim,along,y,.05,wh,'#5a4633',.07);faceQuad(trim,along,y+wh*.5,ww,.05,'#5a4633',.072);faceQuad(trim,along-ww*.25,y,.035,wh,'#5a4633',.071);faceQuad(trim,along+ww*.25,y,.035,wh,'#5a4633',.071);}
-     else faceQuad(trim,along,y,.05,wh,'#c3c6b5',.073);
-     if(!temple&&!lowPower&&l>=1&&rand()<.13)acPts.push([a[0]+ux*(along+ww*.35)+nx*.28,y-.62,a[1]+uz*(along+ww*.35)+nz*.28,Math.atan2(nx,nz)]);
+     faceQuad(windowBatch,along,y,ww,wh,(n+l)%3?glassA:glassB,.055);
     }}
-   if(i===b.front&&!shop&&!temple&&len>3){faceQuad(trim,len/2,b.base+.3,1.6,2.55,'#8d8778');faceQuad(windowBatch,len/2,b.base+.33,1.3,2.35,'#3a342d',.07);
+   if(i===b.front&&!shop&&!temple&&len>3){faceQuad(windowBatch,len/2,b.base+.33,1.3,2.35,'#3a342d',.07);
     if(b.lanterns)for(const s of[-1.15,1.15])lanternPts.push([a[0]+ux*(len/2+s)+nx*.45,b.base+2.45,a[1]+uz*(len/2+s)+nz*.45]);}
   }
   if(shop){const nb=Math.max(1,Math.floor(len/3.2)),bw=len/nb;
-   for(let n=0;n<nb;n++){const along=(n+.5)*bw;faceQuad(windowBatch,along,b.base+.42,bw-.42,2.3,n%2?'#2b2622':'#322b25',.06);faceQuad(trim,along-bw/2+.12,b.base+.4,.22,2.45,'#3a2a1f',.08);
+   for(let n=0;n<nb;n++){const along=(n+.5)*bw;faceQuad(windowBatch,along,b.base+.42,bw-.42,2.3,n%2?'#2b2622':'#322b25',.06);
     if(b.lanterns&&n<4)lanternPts.push([a[0]+ux*(along-bw/2+.3)+nx*.62,b.base+2.55,a[1]+uz*(along-bw/2+.3)+nz*.62]);}
-   faceQuad(trim,len-.12,b.base+.4,.22,2.45,'#3a2a1f',.08);
    faceQuad(trim,len/2,b.base+2.78,len-.1,.42,b.style==='oldStreet'?'#7b2d22':'#6d5a45',.07);
   }
   if(!signDone&&isFront&&len>2.2){const biz=(shop&&b.businesses.find(x=>x.category!=='hotel'))||b.businesses[0],text=signName(biz.short||biz.n),uvs=text?signSlot(text):null;
    if(uvs){const w=Math.min(len*.82,.62*[...text].length+1.1),y=shop?b.base+3.28:b.base+Math.min(b.wallHeight-1.1,3.25);faceQuad(signBatch,len/2,y,w,Math.min(.95,w*.19),'#ffffff',.14,uvs,true);signDone=true;}}
-  if(b.pentEave&&levels>1&&len>2){const y0=b.base+.35+floorH,o=.62;const p1=[a[0],y0+.34,a[1]],p2=[d[0],y0+.34,d[1]],p3=[d[0]+nx*o,y0,d[1]+nz*o],p4=[a[0]+nx*o,y0,a[1]+nz*o];roofs.quad(p1,p2,p3,p4,shade(roofHex,-.04),[[0,0],[len/6,0],[len/6,.2],[0,.2]],-1);}
-  if(b.balcony&&isFront&&len>3.4){for(let l=1;l<levels;l++){const y=b.base+.35+l*floorH,o=1.05,w=Math.min(len-1,len*.7),m=len/2,s0=m-w/2,s1=m+w/2;
-   const A=[a[0]+ux*s0,y,a[1]+uz*s0],B=[a[0]+ux*s1,y,a[1]+uz*s1],C=[B[0]+nx*o,y,B[2]+nz*o],E=[A[0]+nx*o,y,A[2]+nz*o];trim.quad(A,B,C,E,'#c9c6bc');trim.quad(E,C,[C[0],y-.18,C[2]],[E[0],y-.18,E[2]],'#b4b1a7');
-   trim.quad(E,C,[C[0],y+1,C[2]],[E[0],y+1,E[2]],'#8f948f');}}
  }
  const [ux,uz]=b.axis,[cx,cz]=b.rectCenter,half=Math.max(.8,b.depth/2),rise=b.roofRise;
  const specialRoof=[541482372,538484526,538484527,538484528,609990014,609990009].includes(b.osmId);
@@ -257,7 +303,7 @@ pickables.push(foundation.mesh(mat('#ffffff',{vertexColors:true,side:THREE.Doubl
 const signTex=new THREE.CanvasTexture(signCanvas);signTex.colorSpace=THREE.SRGBColorSpace;signTex.anisotropy=8;signBatch.mesh(StdMat({map:signTex,roughness:.55,side:THREE.DoubleSide,emissive:'#ffffff',emissiveMap:signTex,emissiveIntensity:.18}),built);
 if(lanternPts.length){const lm=lanternMesh=new THREE.InstancedMesh(shapes(TIERS[tier].hiShapes).lantern,StdMat({color:'#c8261c',emissive:'#8a1208',emissiveIntensity:.55,roughness:.5}),lanternPts.length),o=new THREE.Object3D();lanternPts.forEach((p,i)=>{o.position.set(...p);o.scale.set(1,1.25,1);o.updateMatrix();lm.setMatrixAt(i,o.matrix);});built.add(lm);farDetail.push(lm);}
 if(acPts.length){const am=new THREE.InstancedMesh(new THREE.BoxGeometry(.8,.55,.3),mat('#d8d8d2',{roughness:.6}),acPts.length),o=new THREE.Object3D();acPts.forEach((p,i)=>{o.position.set(p[0],p[1],p[2]);o.rotation.set(0,p[3],0);o.updateMatrix();am.setMatrixAt(i,o.matrix);});built.add(am);}
-const eg=new THREE.BufferGeometry();eg.setAttribute('position',new THREE.Float32BufferAttribute(roofEdges,3));built.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:'#3f3a33',transparent:true,opacity:.55})));
+const eg=new THREE.BufferGeometry();eg.setAttribute('position',new THREE.Float32BufferAttribute(roofEdges,3));built.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:'#2b2420',transparent:true,opacity:.9})));
 
 // Roof profiles are separate from location confidence. These are informed reconstructions, not scans.
 function roof(parent,cx,y,cz,w,d,rise,material=roofDark,{hip=false,upturn=false}={}){
@@ -286,7 +332,7 @@ const landmarkTop=new Map();
 {const b=G.buildings.find(b=>b.name==='化城寺');if(b){
  const [cx,cz]=b.rectCenter,{rot,wp}=footprintFrame(cx,cz,-b.axis[0],-b.axis[1]),hw=b.depth/2,hl=b.width/2,k=b.width/58.75;
  const g=localGroup(cx,cz,'化城寺');g.rotation.y=rot;const y0=g.position.y;
- const wallC=b.wallColor||'#f0eee8',roofC=b.roofColor||'#6a6f72',capC='#3e4144',ridgeC='#4a4f50';
+ const wallC=WALL_TONE[b.wallColor]||b.wallColor||'#fbf4e6',roofC=ROOF_TONE[b.roofColor]||b.roofColor||'#7b8da2',capC='#3e4144',ridgeC='#4a4f50';
  const wallB=new Batch(),roofB=new Batch(),trimB=new Batch();
  const ground=(z0,z1,f)=>{let m=f===Math.max?-1e9:1e9;for(let i=0;i<=4;i++)for(let j=-2;j<=2;j++)m=f(m,hAt(...wp(j*hw/2,z0+(z1-z0)*i/4)));return m-y0;};
  const R=[{name:'灵官殿',hall:8,court:3.75,doc:3.7,h:6,rise:2.4,wing:2.6},{name:'天王殿',hall:9.5,court:4.5,doc:5.2,h:6.4,rise:2.85,wing:2.6},
@@ -339,7 +385,7 @@ const landmarkTop=new Map();
 // cut through the yellow side halls). Height ≈15 m per the official plan.
 {const b=G.buildings.find(b=>b.id===ROUSHEN_ID),p=G.places.find(p=>p.n==='肉身宝殿');if(b&&p){
  const [cx,cz]=b.rectCenter,{rot,wp}=footprintFrame(cx,cz,-b.axis[0],-b.axis[1]),fw=b.depth,fd=b.width;
- const g=localGroup(cx,cz,'肉身宝殿');g.rotation.y=rot;const y0=g.position.y,iron=mat('#2f3232',{roughness:.7,metalness:.25});
+ const g=localGroup(cx,cz,'肉身宝殿');g.rotation.y=rot;const y0=g.position.y,iron=mat('#55606a',{roughness:.7,metalness:.25});
  let hi=-1e9,lo=1e9;for(let i=-2;i<=2;i++)for(let j=-2;j<=2;j++){const h=hAt(...wp(i*fw/4,j*fd/4));hi=Math.max(hi,h);lo=Math.min(lo,h);}
  const ty=hi-y0+.9,w=fw-3.6,d=fd-3.6;box(g,0,lo-y0-1,0,fw+1.2,ty-(lo-y0-1),fd+1.2,stone);
  box(g,0,ty,0,w,6.2,d,red);roof(g,0,ty+6.2,0,fw+1.2,fd+1.2,2.4,iron,{hip:true,upturn:true});
@@ -440,7 +486,7 @@ for(const r of G.roads){if(r.model!=='stair')continue;
  const {rot,wp}=footprintFrame(cx,cz,fx,fz),g=localGroup(cx,cz,p?p.n:'肉身宝殿北门');g.rotation.y=rot;const y0=g.position.y,Wd=b.width,Dp=b.depth;
  let back=-1e9,lo=1e9;for(let i=-3;i<=3;i++){back=Math.max(back,hAt(...wp(i*Wd/6,-Dp/2)),hAt(...wp(i*Wd/6,0)));for(const zz of[-Dp/2,0,Dp/2,Dp/2+4])lo=Math.min(lo,hAt(...wp(i*Wd/6,zz)));}
  const gF=hAt(...wp(0,Dp/2+3))-y0,top=Math.max(back-y0+.25,gF+1.2),yb=lo-y0-1.2;
- const red=mat('#b3312a',{roughness:.7}),marble=mat('#dcd9cf',{roughness:.6}),tile=mat('#3a3e3f',{roughness:.8}),paint=mat('#2a6184',{roughness:.7}),G0=new THREE.Group();G0.position.y=top;g.add(G0);
+ const red=mat('#b3312a',{roughness:.7}),marble=mat('#dcd9cf',{roughness:.6}),tile=mat('#5d6a74',{roughness:.8}),paint=mat('#2a6184',{roughness:.7}),G0=new THREE.Group();G0.position.y=top;g.add(G0);
  // terrace and stair
  box(g,0,yb,(-Dp/2+2.8)/2,Wd-.2,top-yb,2.8+Dp/2,stone);
  {const dh=top-gF,n=Math.max(1,Math.ceil(dh/.16)),bal=new Batch();for(let i=0;i<n;i++){const st=top-(i+1)*dh/n,z0=2.8+i*.32;box(g,0,yb,z0+.16,17,st-yb,.32,marble);
@@ -502,7 +548,7 @@ for(const r of G.roads){if(r.model!=='stair')continue;
  const {rot,wp}=footprintFrame(cx,cz,fx,fz),c=Math.cos(rot),s=Math.sin(rot),loc=([x,z])=>[(x-cx)*c-(z-cz)*s,(x-cx)*s+(z-cz)*c];
  const L=b.ring.map(loc),xs=L.map(q=>q[0]),hw=(Math.max(...xs)-Math.min(...xs))/2,xm=(Math.max(...xs)+Math.min(...xs))/2;
  const wide=L.filter(q=>Math.abs(q[0]-xm)>hw*.6),zF=Math.max(...wide.map(q=>q[1])),zB=Math.min(...wide.map(q=>q[1])),zA=Math.min(...L.map(q=>q[1])),annex=L.filter(q=>q[1]<zB-.5);
- const g=localGroup(cx,cz,p?p.n:'地藏禅寺');g.rotation.y=rot;const y0=g.position.y,red=mat('#a8302a',{roughness:.7}),tile=mat('#3d4242',{roughness:.8}),yellow=mat('#d6a23c'),timber=mat('#4a2a22');
+ const g=localGroup(cx,cz,p?p.n:'地藏禅寺');g.rotation.y=rot;const y0=g.position.y,red=mat('#a8302a',{roughness:.7}),tile=mat('#5d6a74',{roughness:.8}),yellow=mat('#d6a23c'),timber=mat('#4a2a22');
  const hs=[];let lo=1e9;for(let i=0;i<=6;i++)for(let j=0;j<=6;j++){const h=hAt(...wp(xm-hw+i*hw/3,zB+(zF-zB)*j/6));hs.push(h);lo=Math.min(lo,h);}hs.sort((a,b)=>a-b);
  const top=hs[Math.floor(hs.length*.7)]-y0+.5,yb=lo-y0-1.2,bw=2*hw,bd=zF-zB,zc=(zF+zB)/2;
  box(g,xm,yb,zc,bw+1.6,top-yb,bd+1.6,stone);
@@ -840,28 +886,194 @@ let featuredPin=null;
  for(let i=0;i<4;i++){const j=(i+1)%4;roofB.quad(v(outer[i],eave),v(outer[j],eave),v(mid[j],ridge),v(mid[i],ridge));roofB.quad(v(mid[i],ridge),v(mid[j],ridge),v(inner[j],eave),v(inner[i],eave));
   line(g,[v(mid[i],ridge+.08),v(mid[j],ridge+.08)],'#4e564c');
  }
- roofB.mesh(mat('#636a60',{map:roofTex,side:THREE.DoubleSide}),g);
+ roofB.mesh(mat('#7b8da2',{map:roofTex,side:THREE.DoubleSide}),g);
  const inside=new Batch();for(let i=0;i<4;i++){const j=(i+1)%4;inside.quad(v(inner[i],eave-4),v(inner[j],eave-4),v(inner[j],eave),v(inner[i],eave),'#c7c4b4');}inside.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),g);
  box(g,0,eave-4,0,w*.28,.15,d*.4,stone);
  for(const side of[-1,1])for(let l=1;l<5;l++)box(g,0,l*3,side*(d/2+.24),w,.2,.6,stone);
 }}
 // Additional characteristic architecture at mapped temple footprints. The eave overhang shrinks where another
 // footprint is close, so these glazed roofs no longer cut into the neighbouring halls (祇园寺).
-for(const id of[538484526,538484527,538484528,609990014,609990009]){const b=G.buildings.find(b=>b.osmId===id);if(!b)continue;const g=localGroup(...b.rectCenter,b.precinct);g.position.y=b.base;g.rotation.y=Math.atan2(-b.axis[1],b.axis[0]);const oh=clamp((b.eaveRoom??1.1)-.1,.3,1);roof(g,0,b.wallHeight+.3,0,b.width+2*oh,b.depth+2*oh,b.roofRise+.5,b.roofColor?.startsWith('#')?mat(b.roofColor,{roughness:.5,metalness:.1}):gold,{hip:true,upturn:true});for(let i=0;i<Math.round(b.width/3);i++)cylinder(g,-b.width/2+(i+.5)*3,0,b.depth/2+.25,.18,b.wallHeight,red);}
+// 宫殿式大殿, drawn so it reads as a Jiuhua temple hall up close: stone terrace (台基), red columns round a gallery,
+// a blue-green painted beam band (额枋彩画), lattice doors on the front, and a 歇山 roof with corners swept up (翼角起翘),
+// a ridge with 鸱吻 at both ends; the biggest halls get a second, lower eave (重檐). Proportions follow the mapped
+// footprint and the documented roof types (旃檀禅林 琉璃瓦重檐歇山, 祇园寺 金黄琉璃瓦), not a survey.
+function templeHall(b,{double=false,roofCol='#f0b52e',wallCol='#f2b33a'}={}){
+ const g=localGroup(...b.rectCenter,b.precinct||b.name||'寺院');g.position.y=b.base;g.rotation.y=Math.atan2(-b.axis[1],b.axis[0]);
+ const c=Math.cos(g.rotation.y),sn=Math.sin(g.rotation.y),wp=(x,z)=>[b.rectCenter[0]+x*c+z*sn,b.rectCenter[1]-x*sn+z*c];
+ const W=b.width/2,D=b.depth/2,H=Math.max(b.wallHeight,double?11:7.5),stone=new Batch(),body=new Batch(),rf=new Batch(),trimB=new Batch();
+ let low=0;for(const[x,z]of[[-W,-D],[W,-D],[W,D],[-W,D],[0,D],[0,-D]])low=Math.min(low,hAt(...wp(x*1.1,z*1.1))-b.base);
+ const T=.9;slab(stone,-W-.6,W+.6,low-.5,T,-D-.6,D+.6,'#d8d0bc');slab(stone,-W-.75,W+.75,T-.12,T+.05,-D-.75,D+.75,'#c4bba5');
+ // front steps down the long side facing +z
+ for(let q=0;q<4;q++)slab(stone,-3.2,3.2,low-.5,T-q*.22,D+.6+q*.38,D+.98+q*.38,'#d2cab5');
+ const gal=1.9,ix=W-gal,iz=D-gal,Hc=double?H*.56:H*.86; // gallery depth; column-top height
+ slab(body,-ix,ix,T,Hc,-iz,iz,wallCol);                                     // hall body behind the gallery
+ const red='#b8332a',post=(x,z,y0,y1)=>slab(body,x-.28,x+.28,y0,y1,z-.28,z+.28,red);
+ const nx=Math.max(2,Math.round(2*W/3.4)),nz=Math.max(2,Math.round(2*D/3.4));
+ for(let k=0;k<=nx;k++){const x=-W+.5+k*(2*W-1)/nx;post(x,-D+.5,T,Hc);post(x,D-.5,T,Hc);}
+ for(let k=1;k<nz;k++){const z=-D+.5+k*(2*D-1)/nz;post(-W+.5,z,T,Hc);post(W-.5,z,T,Hc);}
+ // painted beam band (额枋) on the column tops, gold line under it
+ const band=(x0,x1,z0,z1,y)=>{slab(trimB,x0,x1,y-.75,y,z0,z1,'#2f6f6c');slab(trimB,x0-.01,x1+.01,y-.85,y-.75,z0-.01,z1+.01,'#e2b64a');};
+ band(-W+.2,W-.2,-D+.2,-D+.75,Hc);band(-W+.2,W-.2,D-.75,D-.2,Hc);band(-W+.2,-W+.75,-D+.2,D-.2,Hc);band(W-.75,W-.2,-D+.2,D-.2,Hc);
+ // lattice doors on the front wall (+z), red panels with gold grid
+ const nd=Math.max(3,Math.min(7,Math.round(2*ix/3.4)|1)),dw=2*ix/nd;
+ for(let k=0;k<nd;k++){const x0=-ix+k*dw+.25,x1=-ix+(k+1)*dw-.25;slab(trimB,x0,x1,T+.1,Math.min(Hc-1,T+4.2),iz,iz+.08,'#8e2a20');
+  for(let q=1;q<4;q++){const y=T+.1+q*(Math.min(Hc-1,T+4.2)-T-.1)/4;slab(trimB,x0,x1,y-.04,y+.04,iz+.08,iz+.12,'#d9ad4c');}
+  slab(trimB,(x0+x1)/2-.04,(x0+x1)/2+.04,T+.1,Math.min(Hc-1,T+4.2),iz+.08,iz+.12,'#d9ad4c');}
+ // 歇山 roof with swept-up corners: eave rectangle (ex,ez) at height ye, skirt up to the gable step, then the gable.
+ function xieshan(ex,ez,ye,rise,col,lift=1.5){const ys=ye+rise*.48,yr=ye+rise,gx=Math.max(1,ex-ez*.62),gz=ez*.5,N=10;
+  const up=t=>lift*Math.pow(t,3); // corner sweep
+  const eaveL=(x,z)=>[x,ye+up(Math.max(Math.abs(x)/ex,Math.abs(z)/ez)),z];
+  // long sides: strips between eave edge (z=±ez) and step edge (z=±gz, |x|<=gx)
+  for(const sz of[-1,1])for(let k=0;k<N;k++){const t0=-1+2*k/N,t1=-1+2*(k+1)/N;
+   rf.quad(eaveL(t0*ex,sz*ez),eaveL(t1*ex,sz*ez),[t1*gx,ys,sz*gz],[t0*gx,ys,sz*gz],col);}
+  for(const sx of[-1,1])for(let k=0;k<N;k++){const t0=-1+2*k/N,t1=-1+2*(k+1)/N;
+   rf.quad(eaveL(sx*ex,t0*ez),eaveL(sx*ex,t1*ez),[sx*gx,ys,t1*gz],[sx*gx,ys,t0*gz],col);}
+  for(const sz of[-1,1])rf.quad([-gx,ys,sz*gz],[gx,ys,sz*gz],[gx+.15,yr,0],[-gx-.15,yr,0],col);           // upper gable slopes
+  for(const sx of[-1,1])body.tri([sx*gx,ys,-gz],[sx*gx,ys,gz],[sx*gx,yr,0],red);                          // 山花 gable triangles
+  slab(trimB,-gx-.4,gx+.4,yr-.15,yr+.55,-.32,.32,shade(col,-.18));                                          // ridge
+  for(const sx of[-1,1]){slab(trimB,sx*(gx+.1)-.35,sx*(gx+.1)+.35,yr,yr+1.7,-.3,.3,'#c9952e');slab(trimB,sx*(gx+.1)-(sx>0?.9:-.5),sx*(gx+.1)+(sx>0?-.5:.9),yr+1.2,yr+1.7,-.26,.26,'#c9952e');} // 鸱吻
+  for(const[sx,sz]of[[-1,-1],[1,-1],[1,1],[-1,1]])slab(trimB,sx*ex-.18,sx*ex+.18,ye+lift-.05,ye+lift+.45,sz*ez-.18,sz*ez+.18,shade(col,-.22)); // corner tips
+ }
+ const roofC=roofCol,rise=Math.max(b.roofRise||0,D*.55,3.5);
+ if(double){const uix=ix-.2,uiz=iz-.2;slab(body,-uix,uix,Hc,H,-uiz,uiz,wallCol);
+  for(let k=0;k<=nx;k++){const x=-uix+k*2*uix/nx;slab(body,x-.22,x+.22,Hc+1.4,H,uiz,uiz+.06,red);slab(body,x-.22,x+.22,Hc+1.4,H,-uiz-.06,-uiz,red);}
+  // lower eave: a skirt from the gallery edge up to the upper walls
+  const ex=W+1.3,ez=D+1.3,yl=Hc+.2,top=yl+1.9,N=10,up=t=>1.1*Math.pow(t,3),E=(x,z)=>[x,yl+up(Math.max(Math.abs(x)/ex,Math.abs(z)/ez)),z];
+  for(const sz of[-1,1])for(let k=0;k<N;k++){const t0=-1+2*k/N,t1=-1+2*(k+1)/N;rf.quad(E(t0*ex,sz*ez),E(t1*ex,sz*ez),[t1*uix,top,sz*uiz],[t0*uix,top,sz*uiz],roofC);}
+  for(const sx of[-1,1])for(let k=0;k<N;k++){const t0=-1+2*k/N,t1=-1+2*(k+1)/N;rf.quad(E(sx*ex,t0*ez),E(sx*ex,t1*ez),[sx*uix,top,t1*uiz],[sx*uix,top,t0*uiz],roofC);}
+  band(-uix,uix,uiz,uiz+.1,H);band(-uix,uix,-uiz-.1,-uiz,H);
+  xieshan(uix+1.6,uiz+1.6,H,rise,roofC,1.6);}
+ else xieshan(W+1.4,D+1.4,Hc+.15,rise,roofC,1.5);
+ stone.mesh(mat('#ffffff',{vertexColors:true}),g);body.mesh(mat('#ffffff',{vertexColors:true,map:wallTex,side:THREE.DoubleSide}),g);
+ rf.mesh(mat('#ffffff',{vertexColors:true,map:roofTex,side:THREE.DoubleSide}),g);trimB.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),g);}
+// 公厕 the way most Chinese public toilets look: one storey of white tiles over a grey tiled dado, a flat roof with a
+// grey coping, a blue sign band 公共厕所 / WC over the front, and two entrances, 男 (blue plate) and 女 (red plate).
+for(const TOILET_ID of TOILET_IDS){const b=G.buildings.find(b=>b.osmId===TOILET_ID);if(b){
+ const ring=b.ring,y0=b.base-.4,H=3.9,top=b.base+H,wall=new Batch(),trimB=new Batch();
+ let sg=0;ring.forEach((p,i)=>{const q=ring[(i+1)%ring.length];sg+=p[0]*q[1]-q[0]*p[1];});
+ for(let i=0;i<ring.length;i++){const a=ring[i],d=ring[(i+1)%ring.length],len=Math.hypot(d[0]-a[0],d[1]-a[1]);
+  wall.quad([a[0],y0,a[1]],[d[0],y0,d[1]],[d[0],top,d[1]],[a[0],top,a[1]],'#f6f7f5',[[0,y0/.6],[len/.6,y0/.6],[len/.6,top/.6],[0,top/.6]]);
+  const nx=(sg>0?1:-1)*(d[1]-a[1])/len*.03,nz=(sg>0?-1:1)*(d[0]-a[0])/len*.03;
+  wall.quad([a[0]+nx,y0,a[1]+nz],[d[0]+nx,y0,d[1]+nz],[d[0]+nx,b.base+1.1,d[1]+nz],[a[0]+nx,b.base+1.1,a[1]+nz],'#9aa2a6',[[0,0],[len/.6,0],[len/.6,1.5/.6],[0,1.5/.6]]);
+  const ox=nx*12,oz=nz*12;trimB.quad([a[0]+ox,top,a[1]+oz],[d[0]+ox,top,d[1]+oz],[d[0]+ox,top+.45,d[1]+oz],[a[0]+ox,top+.45,a[1]+oz],'#6f7a80');}
+ // flat roof
+ const flat=new Batch();for(const t of THREE.ShapeUtils.triangulateShape(ring.map(p=>new THREE.Vector2(p[0],p[1])),[]))flat.tri(...t.map(k=>[ring[k][0],top+.3,ring[k][1]]),'#b9bec0');
+ // front (edge b.front): sign band and the two entrances
+ const a=ring[b.front],d=ring[(b.front+1)%ring.length],len=Math.hypot(d[0]-a[0],d[1]-a[1]),ux=(d[0]-a[0])/len,uz=(d[1]-a[1])/len,nx=(sg>0?1:-1)*uz,nz=(sg>0?-1:1)*ux;
+ const cv=document.createElement('canvas');cv.width=1024;cv.height=256;const c=cv.getContext('2d');
+ c.fillStyle='#1f5fae';c.fillRect(0,0,1024,128);c.fillStyle='#fff';c.font='bold 84px "PingFang SC","Noto Sans SC",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('公共厕所  WC',512,68);
+ const plate=(x,bg,woman)=>{c.fillStyle=bg;c.fillRect(x,128,128,128);c.fillStyle='#fff';c.beginPath();c.arc(x+64,158,14,0,7);c.fill();
+  if(woman){c.beginPath();c.moveTo(x+64,174);c.lineTo(x+92,224);c.lineTo(x+36,224);c.fill();c.fillRect(x+52,224,8,22);c.fillRect(x+68,224,8,22);}
+  else{c.fillRect(x+48,174,32,46);c.fillRect(x+50,220,11,28);c.fillRect(x+67,220,11,28);}};
+ plate(0,'#1f5fae',false);plate(128,'#d0342c',true);c.font='bold 92px "PingFang SC",sans-serif';c.fillStyle='#1f5fae';c.fillText('男',320,194);c.fillStyle='#d0342c';c.fillText('女',448,194);
+ const tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=8;const signB=new Batch();
+ const face=(B,mid,y,w,h,off,col,uv)=>{const cx=a[0]+ux*mid+nx*off,cz=a[1]+uz*mid+nz*off;B.quad([cx-ux*w/2,y,cz-uz*w/2],[cx+ux*w/2,y,cz+uz*w/2],[cx+ux*w/2,y+h,cz+uz*w/2],[cx-ux*w/2,y+h,cz-uz*w/2],col,uv);};
+ const bw=Math.min(len*.7,7.5);face(signB,len/2,b.base+2.75,bw,bw/8,.08,'#ffffff',[[0,.5],[1,.5],[1,1],[0,1]]);
+ for(const[k,t]of[[0,.27],[1,.73]]){const m=len*t;face(trimB,m,b.base,1.5,2.35,.06,'#2f3a40');face(trimB,m,b.base,1.7,.12,.07,'#e9ece9');face(trimB,m-.85,b.base,.12,2.47,.07,'#e9ece9');face(trimB,m+.85,b.base,.12,2.47,.07,'#e9ece9');
+  face(signB,m+(k?-1.35:1.35),b.base+1.45,.62,.62,.09,'#ffffff',[[k*.125,0],[k*.125+.125,0],[k*.125+.125,.5],[k*.125,.5]]);}
+ // little steps to the door line and the 男/女 characters above the doors
+ face(signB,len*.27,b.base+2.42,.5,.25,.09,'#ffffff',[[.25,.08],[.375,.08],[.375,.42],[.25,.42]]);face(signB,len*.73,b.base+2.42,.5,.25,.09,'#ffffff',[[.375,.08],[.5,.08],[.5,.42],[.375,.42]]);
+ const tile=(()=>{const t=document.createElement('canvas');t.width=t.height=64;const x=t.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,64,64);x.fillStyle='#c9cfd2';x.fillRect(0,0,64,3);x.fillRect(0,0,3,64);const q=new THREE.CanvasTexture(t);q.wrapS=q.wrapT=THREE.RepeatWrapping;q.colorSpace=THREE.SRGBColorSpace;return q;})();
+ const g=new THREE.Group();g.userData.landmark='公厕';built.add(g);detailedGroups.push(g);
+ wall.mesh(mat('#ffffff',{vertexColors:true,map:tile,side:THREE.DoubleSide}),g);trimB.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),g);flat.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),g);
+ signB.mesh(new THREE.MeshBasicMaterial({map:tex,toneMapped:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2}),g);}}
+// 虎形山车站售票处: a small one-room booth: white walls, a blue fascia reading 售票处, a ticket window and a flat roof.
+{const x=-1372,z=-25,y=hMesh(x,z),g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=Math.atan2(-1362-x,-62-z);g.userData.landmark='虎形山车站售票处';built.add(g);detailedGroups.push(g);
+ const W2=3,D2=2.2,H2=3.3,wallM=mat('#f6f4ee'),blue=mat('#2a62c9'),dark=mat('#33424a');
+ box(g,0,-.6,0,W2*2+.6,.6,D2*2+.6,mat('#c9c3b3'));box(g,0,0,0,W2*2,H2,D2*2,wallM);box(g,0,H2,0,W2*2+.8,.35,D2*2+.8,mat('#d8dcdc'));
+ box(g,0,H2-.9,D2+.03,W2*2+.1,.75,.12,blue);box(g,-.9,.95,D2+.02,1.6,1.15,.08,mat('#7fa4b5'));box(g,-.9,.9,D2+.2,1.9,.08,.4,dark);box(g,1.25,0,D2+.02,1,2.2,.08,dark);
+ const cv=document.createElement('canvas');cv.width=512;cv.height=96;const c=cv.getContext('2d');c.fillStyle='#2a62c9';c.fillRect(0,0,512,96);c.fillStyle='#fff';c.font='bold 64px "PingFang SC","Noto Sans SC",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('售 票 处',256,52);
+ const tx=new THREE.CanvasTexture(cv);tx.colorSpace=THREE.SRGBColorSpace;const sign=new THREE.Mesh(new THREE.PlaneGeometry(W2*2-.4,.62),new THREE.MeshBasicMaterial({map:tx,toneMapped:false}));sign.position.set(0,H2-.52,D2+.1);g.add(sign);}
+for(const b of palaceHalls){const big=b.area>=600,rc=b.osmId===609990009?'#D9A93A':b.roofColor;
+ templeHall(b,{double:big,roofCol:ROOF_TONE[rc]||rc,wallCol:WALL_TONE[b.wallColor]||b.wallColor||'#f2b33a'});}
 // 万佛塔: seven octagonal levels and bronze material; height 33m from official inventory.
 {const b=G.buildings.find(b=>b.name==='万佛塔');if(b){const g=localGroup(...b.center,'万佛塔');g.position.y=b.base;for(let i=0;i<7;i++){const r=6.2-i*.51;cylinder(g,0,i*4.3,0,r,3.5,gold);const rg=new THREE.ConeGeometry(r+1.4,1.4,8),o=new THREE.Mesh(rg,gold);o.position.y=i*4.3+4;g.add(o);}cylinder(g,0,30,0,.36,3,gold);}}
 
-// Roads, water, steps and bridge parapets are draped along the recorded centerlines.
-function ribbon(pts,width,batch,col,lift=.22){const samples=[];for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],dist=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.max(1,Math.ceil(dist/5));for(let j=0;j<n;j++)samples.push([a[0]+(b[0]-a[0])*j/n,a[1]+(b[1]-a[1])*j/n]);}samples.push(pts.at(-1));for(let i=1;i<samples.length;i++){const a=samples[i-1],b=samples[i],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.001)continue;const nx=-(b[1]-a[1])/len*width/2,nz=(b[0]-a[0])/len*width/2;batch.quad([a[0]-nx,hAt(a[0]-nx,a[1]-nz)+lift,a[1]-nz],[b[0]-nx,hAt(b[0]-nx,b[1]-nz)+lift,b[1]-nz],[b[0]+nx,hAt(b[0]+nx,b[1]+nz)+lift,b[1]+nz],[a[0]+nx,hAt(a[0]+nx,a[1]+nz)+lift,a[1]+nz],col);}return samples;}
-const roadB=new Batch(),trailB=new Batch(),waterB=new Batch(),markB=new Batch();
-for(const r of G.roads){if(r.model==='stair')continue; // modelled above (三角洲车站台阶)
- const isTrail=['steps','path','footway'].includes(r.kind);const ss=ribbon(r.pts,r.width,isTrail?trailB:roadB,isTrail?'#b6b29b':'#879087',isTrail?.28:.25);
- if(r.kind==='primary'){for(let i=1;i<ss.length;i+=4)ribbon([ss[i-1],ss[i]],.11,markB,'#e5dcc0',.31);}
- if(r.kind==='steps'){for(let i=1;i<ss.length;i++){const a=ss[i-1],b=ss[i],len=Math.hypot(b[0]-a[0],b[1]-a[1]),nx=-(b[1]-a[1])/len,nz=(b[0]-a[0])/len;for(let t=0;t<1;t+=.16){const x=a[0]+(b[0]-a[0])*t,z=a[1]+(b[1]-a[1])*t;line(trailGroup,[[x+nx*r.width*.45,hAt(x,z)+.38,z+nz*r.width*.45],[x-nx*r.width*.45,hAt(x,z)+.38,z-nz*r.width*.45]],'#828a7a');}}}
- if(r.bridge){for(const side of[-1,1]){const pts=r.pts.map((p,i)=>{const q=r.pts[Math.min(i+1,r.pts.length-1)]||p;const prev=r.pts[Math.max(0,i-1)],dx=q[0]-prev[0],dz=q[1]-prev[1],l=Math.hypot(dx,dz)||1;return[p[0]-dz/l*r.width/2*side,hAt(...p)+1.3,p[1]+dx/l*r.width/2*side];});line(decor,pts,'#ceccc0');}}
+// Roads, paths, steps and streams are drawn as hand-drawn-map bands: a smoothed centreline (Chaikin), one continuous
+// strip with mitred joints (no wedge gaps at bends), a pale fill with darker casing along both edges, and every vertex
+// set on the terrain's actual triangles (hMesh) so a band never dips under the hillside between DEM samples. Bands
+// are unlit, so the toon ramp cannot stripe a winding road light/dark.
+function smoothLine(pts,it=2){let p=pts;for(let k=0;k<it&&p.length>2;k++){const q=[p[0]];for(let i=1;i<p.length;i++){const a=p[i-1],b=p[i];q.push([a[0]*.75+b[0]*.25,a[1]*.75+b[1]*.25],[a[0]*.25+b[0]*.75,a[1]*.25+b[1]*.75]);}q.push(p.at(-1));p=q;}return p;}
+// Evenly spaced points along the line (by arc length), so vertex count follows length, not how densely it was traced.
+function resample(pts,step){let total=0;const seg=[];for(let i=1;i<pts.length;i++){const l=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);seg.push(l);total+=l;}
+ const n=Math.max(1,Math.round(total/step)),out=[pts[0]];let i=0,acc=0;for(let k=1;k<n;k++){const d=total*k/n;while(i<seg.length-1&&acc+seg[i]<d){acc+=seg[i];i++;}const t=seg[i]?(d-acc)/seg[i]:0,a=pts[i],b=pts[i+1];out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]);}out.push(pts.at(-1));return out;}
+const roadSeen=new Map(),RS=8,rkey=(x,z)=>Math.floor(x/RS)+','+Math.floor(z/RS); // laid centreline segments, bucketed on an 8 m grid
+function roadAt(x,z,r,skip=-1,loose=false){let best=null,d=r;const gx=Math.floor(x/RS),gz=Math.floor(z/RS);
+ for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)for(const g of roadSeen.get((gx+a)+','+(gz+b))||[]){if(g[7]===skip)continue;
+  const dx=g[2]-g[0],dz=g[3]-g[1],l=dx*dx+dz*dz||1,t=clamp(((x-g[0])*dx+(z-g[1])*dz)/l,0,1),px=g[0]+dx*t,pz=g[1]+dz*t,e=Math.hypot(x-px,z-pz);
+  if(e<d&&(loose||e<g[6])){d=e;best=[px,pz,g[4]+(g[5]-g[4])*t,g[6],g[7]];}}return best;}
+let roadSerial=0;const roadBeds=[],roadEnds=[];
+const terrainUV=(x,z)=>[(x+W/2)/W,1-(z+D/2)/D];
+function band(pts,width,L,fill,edge=null,{lift=.15,step=3,smooth=true,level=true,shoulder=2,bridge=false}={}){
+ const s=resample(smooth?smoothLine(pts):pts,step).filter((p,i,a)=>!i||Math.hypot(p[0]-a[i-1][0],p[1]-a[i-1][1])>.05);if(s.length<2)return s;
+ const w=width/2,e=edge?Math.min(.6,width*.2):0,n=s.length;
+ // long profile: terrain under the centreline, smoothed over ~±8 m, then snapped onto any wider road already laid there
+ let h=s.map(p=>hMesh(p[0],p[1]));
+ if(bridge){const end=i=>roadAt(s[i][0],s[i][1],8)?.[2]??h[i],a=end(0),b=end(n-1);let tot=0;const cum=[0];for(let i=1;i<n;i++)cum.push(tot+=Math.hypot(s[i][0]-s[i-1][0],s[i][1]-s[i-1][1]));h=cum.map(c=>a+(b-a)*c/(tot||1));}
+ else if(level){const k=Math.max(1,Math.round(8/step));h=h.map((_,i)=>{let t=0,c=0;for(let j=Math.max(0,i-k);j<=Math.min(n-1,i+k);j++){t+=h[j];c++;}return t/c;});
+  // where this road runs onto a wider one already laid, take that road's level and ease back to its own over 15 m
+  const cum=[0];for(let i=1;i<n;i++)cum.push(cum[i-1]+Math.hypot(s[i][0]-s[i-1][0],s[i][1]-s[i-1][1]));
+  const snap=s.map((p,i)=>{const end=i===0||i===n-1,q=end?roadAt(p[0],p[1],w+3,-1,true):roadAt(p[0],p[1],w+2);return q&&(end||q[3]>=w+.2)?q[2]:null;}); // ends always meet the road they run onto
+  for(const E of roadEnds){let bi=-1,bd=w+1.5;for(let i=0;i<n;i++){const e=Math.hypot(s[i][0]-E[0],s[i][1]-E[1]);if(e<bd){bd=e;bi=i;}}if(bi>=0&&snap[bi]==null)snap[bi]=E[2];} // and a road passing an earlier road's end meets it there
+  h=h.map((y,i)=>{if(snap[i]!=null)return snap[i];let best=null,bd=15;for(let j=0;j<n;j++)if(snap[j]!=null&&Math.abs(cum[j]-cum[i])<bd){bd=Math.abs(cum[j]-cum[i]);best=snap[j];}if(best==null)return y;const t=bd/15,k=t*t*(3-2*t);return best+(y-best)*k;});}
+ const dir=s.map((p,i)=>{const a=s[Math.max(0,i-1)],b=s[Math.min(n-1,i+1)],l=Math.hypot(b[0]-a[0],b[1]-a[1])||1;return[(b[0]-a[0])/l,(b[1]-a[1])/l];});
+ const offs=new Map(),off=o=>{if(!offs.has(o)){let px,pz;offs.set(o,s.map((p,i)=>{let x=p[0]-dir[i][1]*o,z=p[1]+dir[i][0]*o;if(i&&(x-px)*dir[i][0]+(z-pz)*dir[i][1]<=0){x=px;z=pz;}px=x;pz=z;return[x,z];}));}return offs.get(o);};
+ const at=(i,o,y)=>{const[x,z]=off(o)[i];return[x,level?y:hMesh(x,z)+y-h[i],z];}; // draped bands keep the edge a few cm under the fill
+ const yF=i=>h[i]+lift,yE=i=>h[i]+lift-.04;
+ for(let i=1;i<n;i++){
+  if(e){L.edge.quad(at(i-1,-w,yE(i-1)),at(i,-w,yE(i)),at(i,-w+e,yE(i)),at(i-1,-w+e,yE(i-1)),edge);L.edge.quad(at(i-1,w-e,yE(i-1)),at(i,w-e,yE(i)),at(i,w,yE(i)),at(i-1,w,yE(i-1)),edge);} // kerbs only along the two edges
+  L.fill.quad(at(i-1,-w+e,yF(i-1)),at(i,-w+e,yF(i)),at(i,w-e,yF(i)),at(i-1,w-e,yF(i-1)),fill);}
+ // round caps so consecutive ways and junction ends join without a notch: a fill disc and, round it, a kerb ring
+ for(const[i,sg]of[[0,-1],[n-1,1]]){const c=s[i],base=Math.atan2(dir[i][1],dir[i][0]),pt=(a,r,y)=>[c[0]+Math.cos(a)*r*sg,y,c[1]+Math.sin(a)*r*sg];
+  for(let k=0;k<8;k++){const a0=base-Math.PI/2+Math.PI*k/8,a1=base-Math.PI/2+Math.PI*(k+1)/8;
+   L.fill.tri([c[0],yF(i),c[1]],pt(a0,w-e,yF(i)),pt(a1,w-e,yF(i)),fill);
+   if(e)L.edge.quad(pt(a0,w-e,yE(i)),pt(a1,w-e,yE(i)),pt(a1,w,yE(i)),pt(a0,w,yE(i)),edge);}}
+ if(bridge){for(const sd of[-1,1])for(let i=1;i<n;i++)L.edge.quad(at(i-1,sd*w,yE(i-1)),at(i,sd*w,yE(i)),at(i,sd*w,yE(i)-1),at(i-1,sd*w,yE(i-1)-1),'#cfc8b6');} // deck sides
+ if(level&&L.skirt&&!bridge){
+  roadBeds.push({s,h,dir,w,shoulder,lift,id:roadSerial,L,off});roadEnds.push([s[0][0],s[0][1],h[0]],[s[n-1][0],s[n-1][1],h[n-1]]);
+  // corridor in the road-bed mask (terrain hidden under the road and most of each shoulder)
+  roadMaskCtx.lineCap=roadMaskCtx.lineJoin='round';roadMaskCtx.strokeStyle='#fff';roadMaskCtx.lineWidth=(width+shoulder*1.1)/W*RMASK;roadMaskCtx.beginPath();
+  s.forEach((p,i)=>{const x=(p[0]+W/2)/W*RMASK,z=(p[1]+D/2)/D*RMASK;i?roadMaskCtx.lineTo(x,z):roadMaskCtx.moveTo(x,z);});roadMaskCtx.stroke();
+  for(let i=1;i<n;i++){const g=[s[i-1][0],s[i-1][1],s[i][0],s[i][1],h[i-1],h[i],w,roadSerial],keys=new Set();for(const t of[0,.25,.5,.75,1])keys.add(rkey(s[i-1][0]+(s[i][0]-s[i-1][0])*t,s[i-1][1]+(s[i][1]-s[i-1][1])*t));for(const k of keys){if(!roadSeen.has(k))roadSeen.set(k,[]);roadSeen.get(k).push(g);}}}
+ roadSerial++;
+ return s;}
+// Car roads are asphalt (dark grey with a pale kerb, white centre dashes on the main roads); 石板路 footways in town
+// are grey stone; mountain paths are packed earth; steps are granite.
+const ASPHALT={fill:'#62676b',edge:'#d6d1c4'};
+const ROAD_STYLE={primary:{w:6.5,...ASPHALT},tertiary:{w:4.6,...ASPHALT},residential:{w:4,...ASPHALT},unclassified:{w:4,...ASPHALT},
+ service:{w:3.4,...ASPHALT},bus_stop:{w:3,...ASPHALT},footway:{w:2.2,fill:'#d9d4c7',edge:'#9c9483'},path:{w:1.9,fill:'#e2bf84',edge:'#a27a45'},steps:{w:2.4,fill:'#cfc9bb',edge:'#8f8776'},alley:{w:1.2,fill:'#d3cec1',edge:'#8f887a'}};
+// Layers: every casing under every fill; wider roads are laid first (and lifted a hair higher) so a side road ends
+// under the main road's surface instead of crossing it.
+const RANK={primary:6,tertiary:5,residential:4,unclassified:4,service:3,bus_stop:3,footway:2,steps:2,alley:1,path:1};
+const lay=()=>({edge:new Batch(),fill:new Batch(),skirt:new Batch()}),roadL=lay(),trailL=lay(),markB=new Batch(),waterL={edge:new Batch(),fill:new Batch(),skirt:null};
+// a way whose end lands on the middle of another way is laid after it (so it can take that way's level)
+const endsOnOthers=r=>[r.pts[0],r.pts.at(-1)].filter(e=>G.roads.some(q=>q!==r&&q.pts.some((p,i)=>i&&i<q.pts.length-1&&Math.hypot(p[0]-e[0],p[1]-e[1])<6||i&&(()=>{const a=q.pts[i-1],dx=p[0]-a[0],dz=p[1]-a[1],l=dx*dx+dz*dz||1,t=clamp(((e[0]-a[0])*dx+(e[1]-a[1])*dz)/l,.05,.95);return Math.hypot(e[0]-a[0]-dx*t,e[1]-a[1]-dz*t)<2;})()))).length;
+for(const r of G.roads)r._ends=endsOnOthers(r);
+for(const r of [...G.roads].sort((a,b)=>(!!a.bridge-!!b.bridge)||(RANK[b.kind]||3)-(RANK[a.kind]||3)||a._ends-b._ends)){if(r.model==='stair')continue; // modelled above (三角洲车站台阶)
+ const st=ROAD_STYLE[r.kind]||ROAD_STYLE.service,isTrail=['steps','path','footway','alley'].includes(r.kind),width=Math.max(r.width,st.w),rank=RANK[r.kind]||3;
+ const ss=band(r.pts,width,isTrail?trailL:roadL,st.fill,st.edge,{lift:.14+rank*.012+(r.drape?.12:0),step:r.drape?1:isTrail?4:5,bridge:!!r.bridge,smooth:!r.bridge,level:!r.drape,shoulder:isTrail?1.4:2.2});
+ if(r.kind==='primary'||r.kind==='tertiary'){const hh=ss.map(p=>roadAt(p[0],p[1],1)?.[2]??hMesh(p[0],p[1]));for(let i=0;i+1<ss.length;i+=3){const y=(hh[i]+hh[i+1])/2+.14+rank*.012+.03;markB.quad(...[[ss[i],-.11],[ss[i+1],-.11],[ss[i+1],.11],[ss[i],.11]].map(([p,o])=>{const d=[ss[i+1][0]-ss[i][0],ss[i+1][1]-ss[i][1]],l=Math.hypot(...d)||1;return[p[0]-d[1]/l*o,y,p[1]+d[0]/l*o];}),'#ffffff');}} // centre dashes
+ if(r.kind==='steps'){let run=0;for(let i=1;i<ss.length;i++){const a=ss[i-1],b=ss[i],len=Math.hypot(b[0]-a[0],b[1]-a[1]),nx=-(b[1]-a[1])/len,nz=(b[0]-a[0])/len;
+  for(let t=(.7-run%.7)/len;t<1;t+=.7/len){const x=a[0]+(b[0]-a[0])*t,z=a[1]+(b[1]-a[1])*t,hw=width*.4,y=(roadAt(x,z,1)?.[2]??hMesh(x,z))+.2+rank*.012;line(trailGroup,[[x+nx*hw,y,z+nz*hw],[x-nx*hw,y,z-nz*hw]],'#9c8a6c');}run+=len;}}
+ if(r.bridge){for(const side of[-1,1]){const pts=r.pts.map((p,i)=>{const q=r.pts[Math.min(i+1,r.pts.length-1)]||p;const prev=r.pts[Math.max(0,i-1)],dx=q[0]-prev[0],dz=q[1]-prev[1],l=Math.hypot(dx,dz)||1;const x=p[0]-dz/l*width/2*side,z=p[1]+dx/l*width/2*side;return[x,(roadAt(p[0],p[1],width)?.[2]??hAt(...p))+1.1,z];});line(decor,pts,'#ceccc0');}}
 }
-for(const w of G.water)ribbon(w.pts,w.kind==='river'?5:1.7,waterB,'#609492',.12);
-roadB.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),world);trailB.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),trailGroup);waterB.mesh(mat('#ffffff',{vertexColors:true,roughness:.3,metalness:.12,side:THREE.DoubleSide}),world);markB.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),world);
+// Cut/fill shoulders from each road edge to the hillside, in the terrain's own texture. A shoulder face is left out
+// wherever it would reach into another road, so it can never stand up through that road's surface at a junction.
+for(const R of roadBeds){const {s,h,dir,w,shoulder,lift,id,L,off}=R,n=s.length,P=(i,o,y)=>{const[x,z]=off(o)[i];return[x,y??hMesh(x,z),z];};
+ // a shoulder corner that lands inside another road is tucked 15 cm under that road's surface instead of rising through it
+ const tuck=v=>{const q=roadAt(v[0],v[2],12,id);if(q)v[1]=Math.min(v[1],q[2]-.15);return v;};
+ const face=(a,b,c,d)=>L.skirt.quad(...[a,b,c,d].map(tuck),'#ffffff',[a,b,c,d].map(v=>terrainUV(v[0],v[2])));
+ for(const sd of[-1,1])for(let i=1;i<n;i++)face(P(i-1,sd*w,h[i-1]+lift-.06),P(i,sd*w,h[i]+lift-.06),P(i,sd*(w+shoulder)),P(i-1,sd*(w+shoulder)));
+ for(const[i,sg]of[[0,-1],[n-1,1]]){const c=s[i],d=dir[i],base=Math.atan2(d[1],d[0]),y=h[i]+lift-.06;
+  for(let k=0;k<8;k++){const a0=base-Math.PI/2+Math.PI*k/8,a1=base-Math.PI/2+Math.PI*(k+1)/8,Pp=a=>[c[0]+Math.cos(a)*w*sg,y,c[1]+Math.sin(a)*w*sg],Q=a=>{const x=c[0]+Math.cos(a)*(w+shoulder)*sg,z=c[1]+Math.sin(a)*(w+shoulder)*sg;return[x,hMesh(x,z),z];};
+   face(Pp(a0),Pp(a1),Q(a1),Q(a0));}}}
+roadMask.needsUpdate=true;
+for(const w of G.water)band(w.pts,w.kind==='river'?5:1.8,waterL,'#5fb4dc',w.kind==='river'?'#3f8fbd':null,{lift:.1,step:5,level:false});
+const bandMat=(units)=>new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:units});
+const skirtMat=new THREE.MeshBasicMaterial({map:texture,color:'#d9d9d9',side:THREE.DoubleSide});
+roadL.skirt.mesh(skirtMat,world);trailL.skirt.mesh(skirtMat,trailGroup);
+roadL.edge.mesh(bandMat(-2),world);trailL.edge.mesh(bandMat(-2),trailGroup);waterL.edge.mesh(bandMat(-2),world);
+waterL.fill.mesh(bandMat(-4),world);trailL.fill.mesh(bandMat(-4),trailGroup);roadL.fill.mesh(bandMat(-6),world);markB.mesh(bandMat(-8),world);
 for(const a of G.areas.filter(a=>a.kind==='water')){const batch=new Batch();for(const t of a.triangles)batch.tri(...t.map(p=>[p[0],hAt(...p)+.3,p[1]]),'#6b9290');batch.mesh(mat('#ffffff',{vertexColors:true,roughness:.25,side:THREE.DoubleSide}),world);}
 
 $('#load-text').textContent='铺设山林、缆车与商家标记';await new Promise(requestAnimationFrame);
@@ -871,13 +1083,14 @@ const minyuanPts=G.places.filter(p=>['上闵园','中闵园','下闵园','闵园
 function bambooZone(x,z,h,steep){if(h<420||h>1000||steep>1.1)return 0;let d=1e9;for(const[a,b]of minyuanPts)d=Math.min(d,Math.hypot(x-a,z-b));return d<900?.55:(h<760&&d<2600?.12:0);}
 // Phones plant 6 600 trees, 30 % of the 22 000 they had (the owner's choice once the forest was measured, 2026-09-28);
 // desktops keep 56 000.
-const bamboo=[];const trees=[],rf=rng(892);const treeLimit=lowPower?6600:56000;
-for(let i=0;i<treeLimit*2&&trees.length<treeLimit;i++){
- const x=(rf()-.5)*W*.998,z=(rf()-.5)*D*.998,h=hAt(x,z);
- if(blocked(x,z)||h<100||h>1310)continue;
- const steep=Math.hypot(hAt(x+10,z)-hAt(x-10,z),hAt(x,z+10)-hAt(x,z-10))/20;
+const bamboo=[];const trees=[],rf=rng(892);const treeLimit=lowPower?3600:16000; // groves: fewer trees, the painted canopy carries the forest
+for(let i=0;i<treeLimit*8&&trees.length<treeLimit;i++){
+ const x=(rf()-.5)*W*.998,z=(rf()-.5)*D*.998,h=hAt(x,z),hr=realH(h);
+ if(blocked(x,z)||hr<100||hr>1310)continue;
+ const steep=Math.hypot(hAt(x+10,z)-hAt(x-10,z),hAt(x,z+10)-hAt(x,z-10))/20/EXAG;
  if(steep>1.7&&rf()<.84)continue;
- const s=6.5+rf()*6.7,bz=bambooZone(x,z,h,steep);if(bz&&rf()<bz){bamboo.push({x,z,h,s:9+rf()*4,r:rf()});continue;}trees.push({x,z,h,s,r:rf(),pine:rf()<.18+(h>800?.25:0)});
+ const gv=groveAt(x,z,hr);if(rf()>.06+.94*gv*gv)continue; // mostly inside groves, a few lone trees in the clearings
+ const s=(6.5+rf()*6.7)*(gv>.6?1.15:.9),bz=bambooZone(x,z,hr,steep);if(bz&&rf()<bz){bamboo.push({x,z,h,s:9+rf()*4,r:rf()});continue;}trees.push({x,z,h,s,r:rf(),pine:rf()<.18+(hr>800?.25:0)});
 }
 // The forest is cut into TILES×TILES blocks over the terrain, each with its own instanced trunks, broadleaf crowns, pine
 // cones and bamboo, so a view of part of the mountain skips the blocks outside it. Tiers below 高清 use coarser shapes
@@ -894,17 +1107,17 @@ const dummy=new THREE.Object3D(),tc=new THREE.Color();
 const instanced=(geo,m,n,shadow)=>{if(!n)return null;const im=new THREE.InstancedMesh(geo,m,n);im.receiveShadow=shadow;forest.add(im);return im;};
 for(const tile of tiles){
  const L=tile.list,leafPre=[0],pinePre=[0];for(const t of L){leafPre.push(leafPre.at(-1)+(t.pine?0:1));pinePre.push(pinePre.at(-1)+(t.pine?1:0));}
- const trunk=instanced(S0.trunk,trunkMat,L.length,false),crown=instanced(S0.leaf,leafMat,leafPre.at(-1)*2,true),cone=instanced(S0.pine,pineMat,pinePre.at(-1)*2,true),bam=instanced(S0.bamboo,bambooMat,tile.bamboo.length*culms,true);
+ const trunk=instanced(S0.trunk,trunkMat,L.length,false),crown=instanced(S0.leaf,leafMat,leafPre.at(-1),true),cone=instanced(S0.pine,pineMat,pinePre.at(-1)*2,true),bam=instanced(S0.bamboo,bambooMat,tile.bamboo.length*culms,true);
  let ti=0,li=0,pi=0,k=0;
  for(const t of L){dummy.position.set(t.x,t.h+t.s*.35,t.z);dummy.rotation.set(0,t.r*6.28,0);dummy.scale.set(1,t.s*.7,1);dummy.updateMatrix();trunk.setMatrixAt(ti++,dummy.matrix);
-  for(let j=0;j<2;j++){if(t.pine){dummy.position.set(t.x,t.h+t.s*(.68+j*.36),t.z);dummy.scale.set(t.s*(.5-j*.12),t.s*.91,t.s*(.5-j*.12));tc.set(t.r>.5?'#304f39':'#385842');dummy.updateMatrix();cone.setMatrixAt(pi,dummy.matrix);cone.setColorAt(pi++,tc);}else{dummy.position.set(t.x+(j?1.7:-1.1),t.h+t.s*(.67+j*.13),t.z+(j?-1.2:.9));dummy.scale.set(t.s*(.59-j*.04),t.s*(.40+j*.03),t.s*.57);tc.set(['#3e5b36','#4b663d','#38583d','#526b42'][Math.floor(t.r*4)]);dummy.updateMatrix();crown.setMatrixAt(li,dummy.matrix);crown.setColorAt(li++,tc);}}
+  for(let j=0;j<2;j++){if(t.pine){dummy.position.set(t.x,t.h+t.s*(.68+j*.36),t.z);dummy.scale.set(t.s*(.5-j*.12),t.s*.91,t.s*(.5-j*.12));tc.set(t.r>.5?'#2e7a52':'#3d8c5a');dummy.updateMatrix();cone.setMatrixAt(pi,dummy.matrix);cone.setColorAt(pi++,tc);}else if(!j){dummy.position.set(t.x,t.h+t.s*.72,t.z);dummy.scale.set(t.s*.74,t.s*.5,t.s*.72);tc.set(t.r<.05?'#f0b23e':t.r>.965?'#e86a3f':['#5aa646','#78bb4e','#3f8f45','#93c95a'][Math.floor(t.r*4)]);dummy.updateMatrix();crown.setMatrixAt(li,dummy.matrix);crown.setColorAt(li++,tc);}}
  }
  // A grove reads as a few tall, soft, yellow-green plumes that lean outward (feathery 毛竹 canopy), lighter than broadleaf forest.
- for(const t of tile.bamboo)for(let c=0;c<culms;c++){const a=t.r*6.28+c*1.9,rr=c?2.2+((t.r*97+c*13)%1)*1.8:0;dummy.position.set(t.x+Math.cos(a)*rr,t.h+t.s*(.6-.05*c),t.z+Math.sin(a)*rr);dummy.rotation.set(Math.sin(a)*.22,0,Math.cos(a)*.22);dummy.scale.set((2.1+.4*((c*7)%3))*culmW,t.s*.46*(1-.06*c),(2.1+.4*((c*5)%3))*culmW);dummy.updateMatrix();bam.setMatrixAt(k,dummy.matrix);tc.set(['#76984c','#809f52','#6b8c47','#8aa65a'][(c+Math.floor(t.r*4))%4]);bam.setColorAt(k++,tc);}
+ for(const t of tile.bamboo)for(let c=0;c<culms;c++){const a=t.r*6.28+c*1.9,rr=c?2.2+((t.r*97+c*13)%1)*1.8:0;dummy.position.set(t.x+Math.cos(a)*rr,t.h+t.s*(.6-.05*c),t.z+Math.sin(a)*rr);dummy.rotation.set(Math.sin(a)*.22,0,Math.cos(a)*.22);dummy.scale.set((2.1+.4*((c*7)%3))*culmW,t.s*.46*(1-.06*c),(2.1+.4*((c*5)%3))*culmW);dummy.updateMatrix();bam.setMatrixAt(k,dummy.matrix);tc.set(['#8cc25a','#99ca62','#7fb852','#a6d16c'][(c+Math.floor(t.r*4))%4]);bam.setColorAt(k++,tc);}
  for(const m of[trunk,crown,cone,bam])if(m){m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true;m.computeBoundingSphere();}
  forestTiles.push({trunk,crown,cone,bam,n:L.length,leafPre,pinePre,nb:tile.bamboo.length});
 }
-function setForestDensity(f){for(const t of forestTiles){const K=Math.round(f*t.n);if(t.trunk)t.trunk.count=K;if(t.crown)t.crown.count=2*t.leafPre[K];if(t.cone)t.cone.count=2*t.pinePre[K];if(t.bam)t.bam.count=Math.round(f*t.nb)*culms;}}
+function setForestDensity(f){for(const t of forestTiles){const K=Math.round(f*t.n);if(t.trunk)t.trunk.count=K;if(t.crown)t.crown.count=t.leafPre[K];if(t.cone)t.cone.count=2*t.pinePre[K];if(t.bam)t.bam.count=Math.round(f*t.nb)*culms;}}
 // 山林植被: the tier decides whether the forest shows until the visitor flips the switch under 图层, whose choice then
 // stands. The switch always shows the real state, so it is off when a slow phone has the forest turned off.
 let treesChoice=null;
@@ -928,6 +1141,44 @@ for(const cable of G.cables){const a=cable.pts[0],b=cable.pts.at(-1),dist=Math.h
 for(const f of G.funicular){const pts=[];for(let i=1;i<f.pts.length;i++){const a=f.pts[i-1],b=f.pts[i],n=Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/3);for(let j=0;j<n;j++){const t=j/n,x=a[0]+(b[0]-a[0])*t,z=a[1]+(b[1]-a[1])*t;pts.push(new THREE.Vector3(x,hAt(x,z)+.8,z));}}const b=f.pts.at(-1);pts.push(new THREE.Vector3(b[0],hAt(...b)+.8,b[1]));
  const curve=new THREE.CatmullRomCurve3(pts);for(const s of[-1,1])line(decor,pts.map(p=>[p.x,p.y,p.z+s*.8]),'#dad8c3');const g=new THREE.Group();box(g,0,0,0,7,2.5,2.4,mat('#eee8d8'));box(g,0,.8,0,6.8,1.2,2.45,glass);box(g,0,2.3,0,7,.45,2.6,red);decor.add(g);movers.push({g,curve,phase:.4,kind:'funicular'});
 }
+// Public facilities as guide-map pictograms: a post topped by a cube that shows the facility's icon on all four sides,
+// so it reads from any direction. Kinds come from the place name. Where the point falls inside a building the cube
+// stands on its roof. Bus stations also get a little bus parked on the nearest road, the filling station a canopy.
+{const FAC=[[/厕|洗手亭/,'wc'],[/停车场/,'park'],[/索道|缆车/,'cable'],[/加油站/,'fuel'],[/充电站/,'charge'],[/车站|客运站/,'bus'],[/售票|检票/,'ticket'],
+  [/游客服务/,'info'],[/卫生院|医院/,'hospital'],[/药房|药堂/,'pharmacy'],[/派出所|公安|警/,'police'],[/小学|幼儿园|学校/,'school'],[/邮政|邮局/,'post'],[/银行/,'bank']];
+ const ICON={wc:['#2f7fd0','WC'],park:['#2a62c9','P'],cable:['#7a52c2','缆'],fuel:['#d9432f','油'],charge:['#13a07a','电'],bus:['#1d9a5b','bus'],ticket:['#e08a1e','票'],info:['#2b8fd6','i'],
+  hospital:['#ffffff','+r'],pharmacy:['#ffffff','+g'],police:['#1f4fa3','警'],school:['#e5a72e','学'],post:['#1a8a4a','邮'],bank:['#c0392b','¥']};
+ const kinds=Object.keys(ICON),cv=document.createElement('canvas');cv.width=cv.height=512;const c=cv.getContext('2d');
+ kinds.forEach((k,i)=>{const [bg,g]=ICON[k],x=(i%4)*128,y=Math.floor(i/4)*128;c.fillStyle=bg;c.fillRect(x,y,128,128);c.strokeStyle='rgba(0,0,0,.18)';c.lineWidth=6;c.strokeRect(x+3,y+3,122,122);
+  c.fillStyle='#fff';c.textAlign='center';c.textBaseline='middle';
+  if(g==='+r'||g==='+g'){c.fillStyle=g==='+r'?'#d8312a':'#1f9a52';c.fillRect(x+50,y+22,28,84);c.fillRect(x+22,y+50,84,28);}
+  else if(g==='bus'){c.beginPath();c.roundRect(x+22,y+26,84,66,10);c.fill();c.fillStyle=bg;c.fillRect(x+30,y+36,68,24);c.fillStyle='#fff';c.beginPath();c.arc(x+42,y+98,10,0,7);c.arc(x+86,y+98,10,0,7);c.fill();}
+  else{c.font=`bold ${g.length>1&&/^[A-Z]/.test(g)?64:g==='i'?92:76}px "PingFang SC","Noto Sans SC",sans-serif`;c.fillText(g,x+64,y+68);}});
+ const atlas=new THREE.CanvasTexture(cv);atlas.colorSpace=THREE.SRGBColorSpace;atlas.anisotropy=8;
+ const cube=new Batch(),post=new Batch(),extra=new Batch(),inRing=(x,z,r)=>{let o=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>z)!==(b[1]>z)&&x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0])o=!o;}return o;};
+ const nearestRoad=(x,z)=>{let best=null,d=40;for(const r of G.roads){if(['footway','path','steps'].includes(r.kind))continue;for(let i=1;i<r.pts.length;i++){const a=r.pts[i-1],b=r.pts[i],dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz||1,t=clamp(((x-a[0])*dx+(z-a[1])*dz)/l2,0,1),px=a[0]+dx*t,pz=a[1]+dz*t,e=Math.hypot(x-px,z-pz);if(e<d){d=e;best={x:px,z:pz,ux:dx/Math.sqrt(l2),uz:dz/Math.sqrt(l2)};}}}return best;};
+ const blk=(B,x0,x1,y0,y1,z0,z1,col)=>{const P=[[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]];for(const f of[[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]])B.quad(P[f[0]],P[f[1]],P[f[2]],P[f[3]],col);};
+ // oriented box: centre, axis (ux,uz), half sizes along/across, height span
+ const obox=(B,cx,cz,ux,uz,ha,hc,y0,y1,col)=>{const vx=-uz,vz=ux,q=(a,b2,y)=>[cx+ux*a+vx*b2,y,cz+uz*a+vz*b2],P=[q(-ha,-hc,y0),q(ha,-hc,y0),q(ha,hc,y0),q(-ha,hc,y0),q(-ha,-hc,y1),q(ha,-hc,y1),q(ha,hc,y1),q(-ha,hc,y1)];for(const f of[[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]])B.quad(P[f[0]],P[f[1]],P[f[2]],P[f[3]],col);};
+ for(const p of G.places){if(p.category!=='service'&&p.category!=='transport')continue;const k=FAC.find(([re])=>re.test(p.n))?.[1];if(!k||/公司|营业厅/.test(p.n)||TOILETS[p.n])continue; // those toilets are modelled as themselves
+  const i=kinds.indexOf(k),u0=(i%4)/4,v0=1-Math.floor(i/4)/4,uv=[[u0+.004,v0-.246],[u0+.246,v0-.246],[u0+.246,v0-.004],[u0+.004,v0-.004]];
+  const host=G.buildings.find(b=>Math.abs(b.rectCenter[0]-p.x)<40&&Math.abs(b.rectCenter[1]-p.z)<40&&inRing(p.x,p.z,b.ring));
+  const g0=hMesh(p.x,p.z),base=host?(TOILET_IDS.has(host.osmId)?host.base+4.2:host.base+host.wallHeight+(host.roofRise||0)):g0,S=5.5,y0=base+(host?1.5:7),h=S/2;
+  blk(post,p.x-.18,p.x+.18,host?base-.5:g0,y0,p.z-.18,p.z+.18,'#5b6066');
+  const X0=p.x-h,X1=p.x+h,Z0=p.z-h,Z1=p.z+h,Y0=y0,Y1=y0+S;
+  cube.quad([X0,Y0,Z1],[X1,Y0,Z1],[X1,Y1,Z1],[X0,Y1,Z1],'#ffffff',uv);cube.quad([X1,Y0,Z0],[X0,Y0,Z0],[X0,Y1,Z0],[X1,Y1,Z0],'#ffffff',uv);
+  cube.quad([X1,Y0,Z1],[X1,Y0,Z0],[X1,Y1,Z0],[X1,Y1,Z1],'#ffffff',uv);cube.quad([X0,Y0,Z0],[X0,Y0,Z1],[X0,Y1,Z1],[X0,Y1,Z0],'#ffffff',uv);
+  const top=[[u0+.12,v0-.12],[u0+.13,v0-.12],[u0+.13,v0-.13],[u0+.12,v0-.13]];cube.quad([X0,Y1,Z1],[X1,Y1,Z1],[X1,Y1,Z0],[X0,Y1,Z0],'#ffffff',top);
+  if(k==='bus'&&p.n!=='三角洲车站'){const r=nearestRoad(p.x,p.z);if(r){const bx=r.x,bz=r.z,y=hMesh(bx,bz)+.45;
+    obox(extra,bx,bz,r.ux,r.uz,4.6,1.25,y,y+2.9,'#2fae6a');obox(extra,bx,bz,r.ux,r.uz,4.62,1.27,y+1.55,y+2.45,'#2b3a40');obox(extra,bx,bz,r.ux,r.uz,4.5,1.2,y+2.9,y+3.1,'#f4f1e8');
+    for(const a of[-2.9,2.9])for(const s2 of[-1,1]){const wx=bx+r.ux*a-r.uz*1.2*s2,wz=bz+r.uz*a+r.ux*1.2*s2;obox(extra,wx,wz,r.ux,r.uz,.5,.18,y-.45,y+.5,'#2a2a2a');}}}
+  if(k==='fuel'){const y=g0+5.2;blk(extra,p.x-6,p.x+6,y,y+.8,p.z-4.5,p.z+4.5,'#f4f1e8');blk(extra,p.x-6.05,p.x+6.05,y+.15,y+.55,p.z-4.55,p.z+4.55,'#d9432f');
+    for(const[a,b2]of[[-5,-3.5],[5,-3.5],[-5,3.5],[5,3.5]])blk(extra,p.x+a-.2,p.x+a+.2,g0,y,p.z+b2-.2,p.z+b2+.2,'#e8e4da');
+    for(const a of[-2.2,2.2])blk(extra,p.x+a-.5,p.x+a+.5,g0,g0+1.9,p.z-.35,p.z+.35,'#d9432f');}
+ }
+ const facilities=new THREE.Group();decor.add(facilities);
+ farDetail.push(cube.mesh(new THREE.MeshBasicMaterial({map:atlas,toneMapped:false}),facilities),post.mesh(mat('#ffffff',{vertexColors:true}),facilities));
+ if(extra.p.length)extra.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),facilities);}
 for(const[parent,b]of lineBatches){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('color',new THREE.Float32BufferAttribute(b.c,3));parent.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({vertexColors:true})));}
 // Simple entrance landmark, placed from the user's circled screenshot and photo.
 if(checkpointSite){const g=buildEntranceCheckpoint(checkpointSite,mat);built.add(g);detailedGroups.push(g);landmarkTop.set(checkpoint.n,checkpointSite.floor+7.5);}
@@ -989,8 +1240,8 @@ for(const p of places){if(!Number.isFinite(p.x)||!Number.isFinite(p.z)||!(p.sear
  // Label tiers. 2 = must show (居之林 and the major sights, p1): never dropped. 1 = temples with a story: placed ahead of
  // the rest, a leader line if need be, and only left out when no spot keeps them readable. 0 = the rest.
  p.tier=p.featured||p.p===1?2:p.category==='temple'&&p.story?1:0;
- const anchored=p.n==='百岁宫'?G.buildings.find(b=>b.osmId===541482372):null,b=anchored||(p.buildingId&&buildingById.get(p.buildingId))||closestBuilding(p,business(p)?12:35);
- p.top=landmarkTop.get(p.n)??(p.category==='village'?hAt(p.x,p.z)+40:b?b.base+b.wallHeight+b.roofRise:hAt(p.x,p.z)+(p.category==='temple'?22:business(p)?9:11));
+ const anchored=p.n==='百岁宫'?G.buildings.find(b=>b.osmId===541482372):TOILETS[p.n]?G.buildings.find(b=>b.osmId===TOILETS[p.n]):null,b=anchored||(p.buildingId&&buildingById.get(p.buildingId))||closestBuilding(p,business(p)?12:35);
+ p.top=landmarkTop.get(p.n)??(TOILET_IDS.has(anchored?.osmId)?anchored.base+4.4:p.category==='village'?hAt(p.x,p.z)+40:b?b.base+b.wallHeight+b.roofRise:hAt(p.x,p.z)+(p.category==='temple'?22:business(p)?9:11));
  label.position.set(anchored?anchored.center[0]:p.x,p.top+5,anchored?anchored.center[1]:p.z);p.nearest=b;
  p.limit=p.featured||p.p===1?Infinity:p.category==='village'?2600:business(p)?(p.quality==='unverified_listing'?650:1250):p.category==='temple'?3600:p.p<=2?3600:1900;}
 // Temple halls (Qunar hall records near their parent temple) and road names: small labels at close range only.
@@ -1001,7 +1252,7 @@ for(const p of places)for(const h of p.halls||[]){const q={n:h.n,x:h.x,z:h.z,p:5
 const labelPlaces=places.concat(extraLabels).filter(p=>p.label);
 
 
-function pose(x,z,dist=900,az=145,pol=57){const target=new THREE.Vector3(x,hAt(x,z)*EX,z);const a=az*Math.PI/180,p=pol*Math.PI/180;return{target,pos:target.clone().add(new THREE.Vector3(-Math.sin(a)*dist*Math.sin(p),dist*Math.cos(p),Math.cos(a)*dist*Math.sin(p)))};}
+function pose(x,z,dist=900,az=145,pol=57){const target=new THREE.Vector3(x,hAt(x,z)*world.scale.y,z);const a=az*Math.PI/180,p=pol*Math.PI/180;return{target,pos:target.clone().add(new THREE.Vector3(-Math.sin(a)*dist*Math.sin(p),dist*Math.cos(p),Math.cos(a)*dist*Math.sin(p)))};}
 let routes=null,started=false;const frameHooks=[]; // routes: set up after the panel; frameHooks run each frame before the controls
 const cameraFlight=createCameraFlight(camera,controls,{reducedMotion:reduce});
 function fly(to,ms=1200,onDone=null,arrivalDelay=0){routes?.stopPreview();cameraFlight.move(to,ms,onDone,arrivalDelay);if(started)syncViewShift();}
@@ -1115,7 +1366,7 @@ function selectPlace(p,doFly){noteCardOpener();deselect();selected=p;if(p.el)p.e
  if(placePhotos.length){hero=node('div','card-hero');const photos=placePhotos,srcs=photos.map(photo=>window.__JIUHUA_MEDIA__?.[photo.src]||photo.src);
  for(const [i,photo]of photos.entries()){const a=node('a');a.href=srcs[i];a.setAttribute('aria-label',photo.alt+'，点开放大');a.onclick=e=>{e.preventDefault();openViewer(srcs,i,p.n,photos,a);};const img=node('img');img.src=srcs[i];img.width=photo.width;img.height=photo.height;img.alt=photo.alt;img.loading='lazy';a.append(img);if(photo.takenAt)a.append(node('span','photo-date',photo.takenAt.slice(0,4)+'年实拍 · 点开放大'));hero.append(a);}}
  const card=cardBase(p.displayName||(p.featured?p.shortName:p.n),p.featured?'精选民宿 · 实拍建模':CAT[p.category]||'地点',{cat:p.category,hero,featured:!!p.featured});
- const chips=node('div','chips');if(p.address||p.zone)chips.append(node('span','',p.address||p.zone));if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(hAt(p.x,p.z))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));const summary=node('div','card-summary');summary.append(chips);card.append(summary);if(p.featured)routeTeaser(card);
+ const chips=node('div','chips');if(p.address||p.zone)chips.append(node('span','',p.address||p.zone));if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(realH(hAt(p.x,p.z)))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));const summary=node('div','card-summary');summary.append(chips);card.append(summary);if(p.featured)routeTeaser(card);
  if(p.featured)card.append(node('p','lead','三层退台的山地民宿：屋顶露台远眺九华诸峰，二层木平台与罗汉松小院，门前停车场带充电桩，挡墙上方是挂满灯笼的大松树。'));
  // Why go first, then the story with how each paragraph should be read; where a story exists the building notes move into 资料与依据.
  if(p.highlight){const h=node('p','highlight');h.append(node('b','','看点'),p.highlight);card.append(h);}
@@ -1206,7 +1457,7 @@ const ROUTE_COVERS='.brand,.viewbar,.rail>*,.dock,.map-meta>*,#route-hud,#flight
 function routeCovers(){const out=[];for(const el of $$(ROUTE_COVERS)){if(!el.offsetWidth||el.closest('.is-hidden')||getComputedStyle(el).visibility==='hidden')continue;const r=el.getBoundingClientRect();out.push([r.left,r.top,r.right,r.bottom]);}return out;}
 // Leaving or starting over a route stops the camera where it is, but a card's flight is left to land: the card has its own
 // bookkeeping, and a preview that starts closes it anyway (closeSheetsForRoute).
-routes=setupRoutes({routes:G.routes||[],scene,world,camera,controls,hAt,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,covers:routeCovers,onFrame:f=>frameHooks.push(f),cancelFlight:()=>{if(!cameraFlight.destination?.onDone)cameraFlight.cancel();},
+routes=setupRoutes({routes:G.routes||[],scene,world,camera,controls,hAt,realH,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,covers:routeCovers,onFrame:f=>frameHooks.push(f),cancelFlight:()=>{if(!cameraFlight.destination?.onDone)cameraFlight.cancel();},
  onPlaybackChange:()=>{if(started)syncViewShift();syncRouteTeaser();},
  // a preview started from the sheet or card puts them away; keyboard focus moves on to the route bar's play button
  closeSheetsForRoute:()=>{const a=document.activeElement,had=mobile&&!$('#panel').classList.contains('closed')&&$('#panel').contains(a)||$('#card').classList.contains('show')&&$('#card').contains(a);closeCard(false);if(mobile)$('#panel').classList.add('closed');resize();if(had)focusOn($('#route-hud .rh-play'));}});
@@ -1218,7 +1469,7 @@ $('#route-hud .rh-close').onclick=()=>{const had=$('#route-hud').contains(docume
 // Phone sheets drag (sheet-drag.js); each change of their size re-centres the map.
 setupSheetDrag({compact:compactViewport,closePanel:()=>panelFocusBack(hidePanel())});addEventListener('sheetchange',()=>syncViewShift());
 $('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>{treesChoice=e.target.checked;applyTrees();};$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
-$('#height').oninput=e=>{const old=EX;EX=+e.target.value;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=EX;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`视觉增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(EX-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(EX-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*EX;for(const q of extraLabels)q.label.position.y=(q.top+4)*EX;};
+$('#height').oninput=e=>{const old=world.scale.y;EX=+e.target.value;const sc=EX/EXAG;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=sc;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`地形增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(sc-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(sc-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*sc;for(const q of extraLabels)q.label.position.y=(q.top+4)*sc;};
 const S=G.stats,ST=S.buildingStyles||{};
 const pubCount=places.filter(p=>p.searchable&&['service','transport'].includes(p.category)).length,sightCount=places.filter(p=>['sight','nature','village'].includes(p.category)).length;
 const dataText=`<p>本次更新：2026 年 9 月 28 日。覆盖约 ${(W/1000).toFixed(2)} × ${(D/1000).toFixed(2)} 公里，重点为九华街、百岁宫、闵园、天台与花台。它是依据公开资料重建的可交互模型，不是倾斜摄影或实测成果。</p>
@@ -1299,7 +1550,7 @@ $('#capture').onclick=()=>{
  const bw=tx-m+Math.max(tw,sw,mw)+20,bh=pad*2+66;
  // The image has none of the page's chrome, only its own brand box and credits strip: labels are placed clear of those;
  // the next frame places them for the screen again.
- camera.updateMatrixWorld();updateLabels([[m,m,m+bw,m+bh],[0,vh-footH,vw,vh]]);renderer.render(scene,camera);routes?.updateLabels(performance.now());renderLabelLayer();labelsDirty=true;
+ camera.updateMatrixWorld();updateLabels([[m,m,m+bw,m+bh],[0,vh-footH,vw,vh]]);syncMist();renderer.render(scene,camera);routes?.updateLabels(performance.now());renderLabelLayer();labelsDirty=true;
  c.fillStyle='#dce5df';c.fillRect(0,0,out.width,out.height);c.drawImage(renderer.domElement,0,0,out.width,out.height);c.scale(k,k);
  for(const el of[...labels.domElement.children].filter(e=>e.classList.contains('maplabel')&&e.style.display!=='none').sort((a,b)=>(parseInt(getComputedStyle(a).zIndex)||0)-(parseInt(getComputedStyle(b).zIndex)||0)))paintLabel(c,el,k,vh-footH);
  c.save();c.shadowColor='rgba(20,32,27,.24)';c.shadowBlur=20*k;c.shadowOffsetY=6*k;roundPath(c,m,m,bw,bh,18);c.fillStyle='rgba(251,249,243,.96)';c.fill();c.restore();
@@ -1361,7 +1612,7 @@ window.visualViewport?.addEventListener('resize',syncVisibleViewport);window.vis
 // desktop layer popover.
 addEventListener('keydown',e=>{const v=$('#viewer');if(!v.hidden){if(e.key==='Escape')closeViewer();else if(e.key==='ArrowLeft'||e.key==='ArrowRight')v._go(e.key==='ArrowLeft'?-1:1);return;}if(e.key==='Escape'&&!$('#data-dialog').open){const panel=$('#panel'),sheet=mobile&&!panel.classList.contains('closed'),had=panel.contains(document.activeElement);closeCard();closeMobileSheets('detail');if(!mobile)setSettings(false);if(sheet)panelFocusBack(had);}});addEventListener('resize',resize);resize();
 const temp=new THREE.Vector3();
-function occluded(p,slack=4,tail=0){const a=camera.position,b=p.label.position,end=tail?1-tail/Math.max(tail*1.2,a.distanceTo(b)):1;for(let k=2;k<24&&k/24<end;k++){const t=k/24,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;if(Math.abs(x)>W/2||Math.abs(z)>D/2)continue;if(hAt(x,z)*EX>a.y+(b.y-a.y)*t+slack)return true;}return false;}
+function occluded(p,slack=4,tail=0){const a=camera.position,b=p.label.position,end=tail?1-tail/Math.max(tail*1.2,a.distanceTo(b)):1;for(let k=2;k<24&&k/24<end;k++){const t=k/24,x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t;if(Math.abs(x)>W/2||Math.abs(z)>D/2)continue;if(hAt(x,z)*world.scale.y>a.y+(b.y-a.y)*t+slack)return true;}return false;}
 // What covers the map, as [left,top,right,bottom] CSS px: each piece of chrome, the desktop column (from the screen's
 // left edge), a phone's bottom sheet (from its top edge down) or side sheet, and the layer popover or sheet. A label
 // under one is dropped rather than left to poke out beside it, and its place in the label budget goes to one people can
@@ -1503,7 +1754,7 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  const dt=lastFrame?now-lastFrame:16.7;lastFrame=now;
  for(const f of frameHooks)f(now,dt);
  cameraFlight.update(now);
- controls.target.x=clamp(controls.target.x,-W/2,W/2);controls.target.z=clamp(controls.target.z,-D/2,D/2);const moved=controls.update();if(Math.abs(camera.position.x)<W/2&&Math.abs(camera.position.z)<D/2&&!inTerrainCut(camera.position.x,camera.position.z))camera.position.y=Math.max(camera.position.y,hAt(camera.position.x,camera.position.z)*EX+8);
+ controls.target.x=clamp(controls.target.x,-W/2,W/2);controls.target.z=clamp(controls.target.z,-D/2,D/2);const moved=controls.update();if(Math.abs(camera.position.x)<W/2&&Math.abs(camera.position.z)<D/2&&!inTerrainCut(camera.position.x,camera.position.z))camera.position.y=Math.max(camera.position.y,hAt(camera.position.x,camera.position.z)*world.scale.y+8);
  const shifting=shift.x!==shiftTarget.x||shift.y!==shiftTarget.y;
  if(shifting){const k=reduce?1:1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
  const idle=lowPower&&!benchUntil&&!cameraFlight.active&&!moved&&!shifting&&!routes?.previewing&&now-lastInput>1500;
@@ -1514,7 +1765,7 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  const distance=camera.position.distanceTo(controls.target),TQ=TIERS[tier];for(const g of detailedGroups)g.visible=distance<TQ.landmarkDist;
  for(const batch of spatialBatches)batch.update(distance);
  for(const t of forestTiles)if(t.trunk)t.trunk.visible=distance<TQ.trunkDist;for(const m of farDetail)m.visible=distance<TQ.detailDist;
- if(featuredPin){const d=camera.position.distanceTo(featuredPin.position),k=clamp(d/160,1,26);featuredPin.scale.setScalar(k);featuredPin.rotation.y=now/1400;const fp=featured;if(fp?.label)fp.label.position.y=(featuredPin.userData.base+featuredPin.userData.head*k)*EX+2*k;}
+ if(featuredPin){const d=camera.position.distanceTo(featuredPin.position),k=clamp(d/160,1,26);featuredPin.scale.setScalar(k);featuredPin.rotation.y=now/1400;const fp=featured;if(fp?.label)fp.label.position.y=(featuredPin.userData.base+featuredPin.userData.head*k)*world.scale.y+2*k;}
  camera.updateMatrixWorld();const cameraChanged=!labelCamera.equals(camera.matrixWorld)||!labelProjection.equals(camera.projectionMatrix);
  if(cameraChanged)selectionPending=true;
  const selectedLabels=labelsDirty||selectionPending&&now-selectionAt>=110;
@@ -1524,7 +1775,7 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
   const moved=camera.position.distanceTo(labelPassPos)>Math.max(.02,camera.position.distanceTo(controls.target)*4e-4)||labelPassQuat.angleTo(camera.quaternion)>4e-4;
   labelPassPos.copy(camera.position);labelPassQuat.copy(camera.quaternion);selectionPending=updateLabels(null,moved)||moved;selectionAt=now;}
  if(selectedLabels||cameraChanged&&now-hudAt>=110){hudAt=now;const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':(fineMouse.matches?'九华山全景 · 滚轮缩放':'九华山全景 · 双指缩放');const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
- renderer.render(scene,camera);const routeLabelsChanged=routes?.updateLabels(now);
+ syncMist();renderer.render(scene,camera);const routeLabelsChanged=routes?.updateLabels(now);
  if(cameraChanged||selectedLabels||routeLabelsChanged)renderLabelLayer();labelsDirty=false;
  labelCamera.copy(camera.matrixWorld);labelProjection.copy(camera.projectionMatrix);
  if(++frame===30)console.info('Map verification',JSON.stringify(window.mapDiagnostics));

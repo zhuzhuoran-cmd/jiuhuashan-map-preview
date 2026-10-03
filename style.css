@@ -66,7 +66,7 @@ svg{display:block}
 #app,#stage{position:fixed;inset:0;overflow:hidden}
 /* Focus inside a moving sheet must not scroll the fixed map shell; lists scroll inside their own panes. */
 #app{overflow:clip}
-#stage{z-index:0;touch-action:none;background:linear-gradient(180deg,#b9ccd1 0%,#dfe7e1 55%,#eceee4 100%)}
+#stage{z-index:0;touch-action:none;background:linear-gradient(180deg,#4f9fe0 0%,#a8d4f0 52%,#fbe3c4 82%,#f7d2a8 100%)}
 canvas{display:block}
 /* Touch: pinches on the UI must not zoom the page; long presses on controls should not select text. Card text stays selectable. */
 .brand,.viewbar,.rail,.dock,.map-meta,.route-hud,.flight-hint,.sheet,dialog,.maplabel{touch-action:pan-x pan-y}

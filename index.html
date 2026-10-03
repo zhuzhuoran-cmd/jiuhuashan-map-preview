@@ -2,7 +2,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f3ea">
 <meta name="robots" content="noindex,nofollow">
 <title>九华山 · 三维实地导览</title><link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css?v=20261001-redesign"><link rel="stylesheet" href="mobile.css?v=20261001-sheet-input-fix"><script type="importmap">{"imports":{"three":"./vendor/build/three.module.js","three/addons/":"./vendor/examples/jsm/"}}</script>
+<link rel="stylesheet" href="style.css?v=20261002-cartoon"><link rel="stylesheet" href="mobile.css?v=20261003-v2-merged"><script type="importmap">{"imports":{"three":"./vendor/build/three.module.js","three/addons/":"./vendor/examples/jsm/"}}</script>
 <script>/* If app.js or any module it imports fails to download, turn the loader into the error screen; if loading stalls, offer a reload. */
 addEventListener('error',function(e){var s=e.target,l=document.getElementById('loading'),r=document.getElementById('reload');if(!s||s.tagName!=='SCRIPT'||!/\/app\.js(\?|$)/.test(s.src)||!l||l.classList.contains('done'))return;l.classList.add('failed');document.getElementById('load-text').textContent='网络不稳，加载中断了，请重新加载。';r.hidden=false;r.onclick=function(){location.reload();};},true);
 setTimeout(function(){var l=document.getElementById('loading'),r=document.getElementById('reload');if(!l||!r||!r.hidden||/\b(done|failed)\b/.test(l.className))return;document.getElementById('load-text').textContent='网络较慢，仍在加载…也可以点“重新加载”';r.hidden=false;r.onclick=function(){location.reload();};},45000);</script>
@@ -98,7 +98,7 @@ setTimeout(function(){var l=document.getElementById('loading'),r=document.getEle
    <label class="switch"><input type="checkbox" id="layer-trees" checked><span class="track" aria-hidden="true"></span><span>山林植被</span></label>
    <label class="switch"><input type="checkbox" id="layer-labels" checked><span class="track" aria-hidden="true"></span><span>地点标注</span></label>
    <label class="switch"><input type="checkbox" id="layer-trails" checked><span class="track" aria-hidden="true"></span><span>步道与台阶</span></label>
-   <div class="height-control"><div class="hc-row"><span>地形高度</span><output id="height-value">真实比例 ×1.0</output></div><input id="height" aria-label="地形高度比例" type="range" min="1" max="1.8" step="0.1" value="1"></div>
+   <div class="height-control"><div class="hc-row"><span>地形高度</span><output id="height-value">地形增强 ×1.6</output></div><input id="height" aria-label="地形高度比例" type="range" min="1" max="1.8" step="0.1" value="1.6" style="--fill:75%"></div>
   </div></div>
  </section>
  <button id="help-open" class="help-open map-chrome" type="button" aria-controls="gesture-tour" aria-label="操作指南，重播手势动画"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.9c0 1.9-2.4 2-2.4 3.6M12 16.5h.01"/></svg><span>操作指南</span></button>
@@ -126,4 +126,4 @@ setTimeout(function(){var l=document.getElementById('loading'),r=document.getEle
 </div>
 <div id="viewer" class="viewer" role="dialog" aria-modal="true" aria-label="居之林民宿实拍照片" hidden><div class="viewer-strip"></div><button class="viewer-close icon-btn" type="button" aria-label="关闭照片"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button><button class="viewer-prev icon-btn" type="button" aria-label="上一张"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button><button class="viewer-next icon-btn" type="button" aria-label="下一张"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button><div class="viewer-count" aria-live="polite"></div></div>
 <div id="toast" role="status" hidden></div>
-</main><script type="module" src="app.js?v=20261001-sheet-input-fix"></script></body></html>
+</main><script type="module" src="app.js?v=20261003-v2-merged"></script></body></html>
