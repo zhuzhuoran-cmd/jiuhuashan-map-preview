@@ -74,10 +74,11 @@
  /* the grip strip spans the sheet's whole top edge (sheet-drag.js treats the top 24px as the grip); the pill sits centred */
  .sheet-grip{display:block;position:relative;flex:none;align-self:stretch;height:20px;margin:0 0 -4px}
  .sheet-grip::before,.settings-wrap::before{content:"";position:absolute;top:8px;left:50%;width:36px;height:4.5px;margin-left:-18px;border-radius:3px;background:var(--line-2)}
- /* the card scrolls as a whole, so its grip pill is sticky: first in flex order, taking no room, above the photos */
- .info-card::before{content:"";position:sticky;top:8px;z-index:4;order:-2;align-self:center;flex:none;width:36px;height:4.5px;margin:8px 0 -12.5px;border-radius:3px;
-  background:rgba(28,42,37,.22);box-shadow:0 0 0 1px rgba(255,255,255,.4);pointer-events:none}
- .info-card:has(>.card-hero)::before{background:rgba(255,255,255,.88);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+ /* The card scrolls as a whole. Its grip has a sticky 24px hit area, with no layout space, above the photos or text.
+    A pseudo-element alone cannot own touch-action, so it would stop dragging once the header had scrolled away. */
+ .info-card>.sheet-grip{position:sticky;top:0;z-index:2;order:-2;height:24px;margin:0 0 -24px;touch-action:none}
+ .info-card>.sheet-grip::before{background:rgba(28,42,37,.22);box-shadow:0 0 0 1px rgba(255,255,255,.4)}
+ .info-card:has(>.card-hero)>.sheet-grip::before{background:rgba(255,255,255,.88);box-shadow:0 1px 3px rgba(0,0,0,.3)}
  .card-hero{height:clamp(140px,calc(var(--visible-height,100dvh) * .22),196px)}
  /* drag handles for sheet-drag.js */
  .sheet-grip,.panel-head,.card-head,.settings-head{touch-action:none}

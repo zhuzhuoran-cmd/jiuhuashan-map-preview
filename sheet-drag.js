@@ -35,6 +35,9 @@ export function setupSheetDrag({compact, closePanel = null}) {
   const track = e => { const t = e.timeStamp; g.trail.push([t, e.clientY]); while (g.trail.length > 2 && t - g.trail[0][0] > 100) g.trail.shift(); };
 
   function down(s, e) {
+    // The generated click after the last drag has no new pointerdown. A deliberate new press does:
+    // release its click suppression even if this press is on a button (which never grabs the sheet).
+    if (e.isPrimary && e.button === 0) swallowUntil = 0;
     if (g || !e.isPrimary || e.button !== 0 || !(e.target instanceof Element) || !usable(s)) return;
     const kind = s.grab(e.target, e.clientY - s.el.getBoundingClientRect().top); if (!kind) return;
     g = {s, kind, id: e.pointerId, x0: e.clientX, y0: e.clientY, drag: false, trail: [[e.timeStamp, e.clientY]], expanded: s.el.classList.contains('expanded')};
@@ -85,7 +88,11 @@ export function setupSheetDrag({compact, closePanel = null}) {
     s.el.addEventListener('pointerup', up);
     s.el.addEventListener('pointercancel', cancel);
     // The click that ends a drag or a grip tap must not also open a photo or press what lies under the finger.
-    s.el.addEventListener('click', e => { if (performance.now() < swallowUntil) { swallowUntil = 0; e.preventDefault(); e.stopPropagation(); } }, true);
+    s.el.addEventListener('click', e => {
+      // Keyboard activation and the app's own close-control click are separate actions, never a drag's click.
+      if (e.detail === 0 && !e.pointerType) return;
+      if (performance.now() < swallowUntil) { swallowUntil = 0; e.preventDefault(); e.stopPropagation(); }
+    }, true);
     // A mouse press on a photo would otherwise start the browser's own image drag and end ours.
     s.el.addEventListener('dragstart', e => { if (g?.s === s) e.preventDefault(); });
     // The settings sheet has nothing that scrolls, so it can hold on to a touch anywhere in its grip strip (CSS only

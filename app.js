@@ -8,7 +8,7 @@ import {setupGuide,kindLabel} from './guide.js?v=20260930-place-details';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 import {createSpatialBatch,AdaptiveResolution} from './render-performance.js?v=20260929-mobile-perf';
-import {setupSheetDrag} from './sheet-drag.js?v=20261001-redesign';
+import {setupSheetDrag} from './sheet-drag.js?v=20261001-sheet-input-fix';
 
 const interactionGuide=setupInteractionGuide();
 
@@ -1063,7 +1063,9 @@ function cardBase(title,tag,{cat='',sub='',hero=null,featured=false}={}){
  const h2=node('h2','',title);h2.tabIndex=-1;head.append(node('span','tag'+(cat?' c-'+cat:''),tag),h2);if(sub)head.append(node('p','sub',sub));
  body.tabIndex=0;body.setAttribute('role','region');body.setAttribute('aria-label','地点详细内容');
  const a=document.activeElement,take=a===cardOpener||card.contains(a);
- if(hero)card.append(hero);card.append(close,head,body);if(!open)reveal(card);syncViewShift();requestAnimationFrame(syncViewShift);
+ // A real sticky grip keeps touch-action:none even when the photos and header have scrolled out of view.
+ const grip=node('div','sheet-grip');grip.setAttribute('aria-hidden','true');
+ if(hero)card.append(hero);card.append(close,head,body,grip);if(!open)reveal(card);syncViewShift();requestAnimationFrame(syncViewShift);
  // Focus moves to the card's title (read first, then Tab runs into its content), unless the visitor has since moved on.
  if(take||focusLost())focusOn(h2);
  return body;
