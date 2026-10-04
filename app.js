@@ -1,5 +1,5 @@
 import {createPlaceSearch,bindPlaceSearch,normalizeSearch} from './place-search.js?v=20261004-sanjiaozhou';
-import {heightExtrema,augmentPlaces,TOILET_MODELS,placeId,pickedPlace,ownerQualityText} from './map-data.js?v=20261004-sanjiaozhou';
+import {heightExtrema,augmentPlaces,TOILET_MODELS,placeId,pickedPlace,ownerQualityText} from './map-data.js?v=20261004-jingtuan-toilet';
 import * as THREE from 'three';
 import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
@@ -42,7 +42,7 @@ addEventListener('gesturestart',e=>e.preventDefault());
 function unstall(){const r=$('#reload');if(r.hidden||$('#loading').classList.contains('failed'))return;r.hidden=true;$('#load-text').textContent='读取地形与真实建筑轮廓';}
 try{await init();}catch(e){console.error(e);fatal(/webgl/i.test(e.message)?'这个浏览器无法显示三维地图（WebGL 不可用）。请换用系统浏览器或更新浏览器后重试；在微信里可点右上角“···”，选“在浏览器打开”。':'地图加载失败，请重新加载。'+e.message);}
 async function init(){
-const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20261004-thumbs'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
+const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20261004-jingtuan-toilet'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
 unstall();
 // Lane from 芙蓉路 past the public toilet to 娘娘塔 and the 化城寺 forecourt, a shortcut the user drew on a screenshot
 // (2026-10-01; on no published map). Traced between the mapped footprints, about 1.2 m wide.
@@ -1373,8 +1373,9 @@ function selectPlace(p,doFly){noteCardOpener();deselect();selected=p;if(p.el)p.e
  const to=p.featured?featuredPose():placePose(p);$('#flight-hint .fh-name').textContent=p.displayName||(p.featured?p.shortName:p.n);
  fly(to,flightMs(to),()=>{if(token!==cardToken||selected!==p){syncViewShift();return;}card.classList.add('arrive');build();clearTimeout(card._arrive);card._arrive=setTimeout(()=>card.classList.remove('arrive'),1600);},150);
 }
-function selectBuilding(b){noteCardOpener();routes?.stopPreview();cameraFlight.cancel();cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint',temple=b.style==='temple';
- const card=cardBase(temple?(b.name||b.precinct||b.templeGuess||'寺院建筑'):'民居建筑',temple?'寺院建筑':'街区建筑',{cat:temple?'temple':'village',sub:b.precinct?`${b.precinct} 寺院范围内`:''});
+// Only temple halls open a card; houses and shops are scenery, so tapping one acts like tapping the ground (the owner, 2026-10-04).
+function selectBuilding(b){noteCardOpener();routes?.stopPreview();cameraFlight.cancel();cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint';
+ const card=cardBase(b.name||b.precinct||b.templeGuess||'寺院建筑','寺院建筑',{cat:'temple',sub:b.precinct?`${b.precinct} 寺院范围内`:''});
  const chips=node('div','chips');chips.append(node('span','',`占地约 ${Math.round(b.area)} m²`),node('span','',`${b.levels||'-'} 层`),node('span','',`墙高 ${b.wallHeight.toFixed(1)} m`));card.append(chips);
  const d=more('外观与数据依据');d.append(node('p','',ml?'平面轮廓来自影像识别，可能包含识别误差。':'平面形状与朝向来自地图记录。'));
  if(b.styleRule)d.append(node('p','',`外观依据（${({observed:'照片观察',documented:'文献记载',inferred:'推断',secondary:'二手资料'})[b.styleCertainty]||b.styleCertainty||'推断'}）：${b.styleRule}。逐栋楼层与门窗未经实测。`));
@@ -1384,10 +1385,10 @@ const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 function onMapTap(e){
  if(cameraFlight.active||!built.visible)return;
  ndc.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);ray.setFromCamera(ndc,camera);const hit=ray.intersectObjects(pickables,true)[0];
- if(!hit){if(mobile)closeCard();return;}
- const p=pickedPlace(hit.object,byId,byName);
+ const p=hit&&pickedPlace(hit.object,byId,byName);
  if(p){selectPlace(p,false);return;}
- const i=hit.object.userData.triangleIds?.[hit.faceIndex];if(i>=0)selectBuilding(G.buildings[i]);
+ const b=hit&&G.buildings[hit.object.userData.triangleIds?.[hit.faceIndex]];
+ if(b?.style==='temple')selectBuilding(b);else if(mobile)closeCard();
 }
 
 const categoryMatches=p=>category==='all'||(GROUPS[category]||[category]).includes(p.category);

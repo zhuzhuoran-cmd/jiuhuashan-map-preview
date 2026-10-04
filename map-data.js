@@ -11,6 +11,7 @@ export const TOILET_MODELS = {
   '公厕（三角洲车站停车场旁）': 609946470,
   '公厕（东崖宾馆附近）': 609892484,
   '公厕（虎形山车站旁）': 609980796,
+  '公共厕所(AH-CIZ-0666)': 609909660,
 };
 const FACILITY_IDS = {
   '公厕（东崖宾馆附近）': 'facility:toilet-dongya',
