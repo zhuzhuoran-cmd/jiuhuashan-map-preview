@@ -11,10 +11,13 @@ import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 import {createSpatialBatch,AdaptiveResolution} from './render-performance.js?v=20260929-mobile-perf';
 import {setupSheetDrag} from './sheet-drag.js?v=20261001-sheet-input-fix';
+import {$,$$,store,clamp,rng,node,reveal,conceal,toast} from './dom.js';
+import {createPhotoViewer,photoCredit} from './photo-viewer.js';
+import {dataNotesHtml} from './data-notes.js';
+import {exportMapImage} from './map-export.js';
 
 const interactionGuide=setupInteractionGuide();
 
-const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const compactViewport=()=>matchMedia('(max-width:820px), (max-width:960px) and (orientation:landscape) and (max-height:520px)').matches;let mobile=compactViewport();
 // Phones and touch-only tablets get the lighter scene (fewer tree facets, no shadows, capped resolution) whatever their layout.
 const lowPower=mobile||matchMedia('(pointer:coarse)').matches&&!matchMedia('(any-pointer:fine)').matches;
@@ -27,18 +30,9 @@ const TIERS=[
  {name:'高清',dpr:2,pbr:true,blur:true,hiShapes:true,forest:1,bamboo:true,trunkDist:2600,detailDist:2600,landmarkDist:4000,labelCap:null,shadows:false},
  {name:'极致',dpr:2,pbr:true,blur:true,hiShapes:true,forest:1,bamboo:true,trunkDist:1e9,detailDist:1e9,landmarkDist:4000,labelCap:null,shadows:true}];
 const maxTier=lowPower?2:3;
-const store={get(k){try{return localStorage.getItem('jiuhua.'+k);}catch{return null;}},set(k,v){try{localStorage.setItem('jiuhua.'+k,v);}catch{}}};
 let tier=+(store.get('autoTier')??(lowPower?1:3));if(!(tier>=0&&tier<=maxTier))tier=lowPower?1:3;
 let emergency=false; // below 流畅: automatic only, when even 流畅 cannot hold ~25 fps
 const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches,fineMouse=matchMedia('(hover:hover) and (pointer:fine)');
-const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
-const rng=seed=>()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
-function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
-// Panels slide/fade in and out: `hidden` is only set once the exit transition has finished.
-function reveal(el){clearTimeout(el._t);el.hidden=false;void el.offsetWidth;el.classList.add('show');}
-function conceal(el,ms=440){el.classList.remove('show');clearTimeout(el._t);el._t=setTimeout(()=>{if(!el.classList.contains('show'))el.hidden=true;},ms);}
-function toast(s){const t=$('#toast');t.textContent=s;reveal(t);clearTimeout(toast.t);toast.t=setTimeout(()=>conceal(t,400),3200);}
 
 // The loading screen doubles as the error screen, with a reload button.
 function fatal(msg){const l=$('#loading');l.hidden=false;l.classList.remove('done');l.classList.add('failed');$('#load-text').textContent=msg;const r=$('#reload');r.hidden=false;r.onclick=()=>location.reload();}
@@ -48,7 +42,7 @@ addEventListener('gesturestart',e=>e.preventDefault());
 function unstall(){const r=$('#reload');if(r.hidden||$('#loading').classList.contains('failed'))return;r.hidden=true;$('#load-text').textContent='读取地形与真实建筑轮廓';}
 try{await init();}catch(e){console.error(e);fatal(/webgl/i.test(e.message)?'这个浏览器无法显示三维地图（WebGL 不可用）。请换用系统浏览器或更新浏览器后重试；在微信里可点右上角“···”，选“在浏览器打开”。':'地图加载失败，请重新加载。'+e.message);}
 async function init(){
-const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20261004-sanjiaozhou'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
+const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20261004-thumbs'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
 unstall();
 // Lane from 芙蓉路 past the public toilet to 娘娘塔 and the 化城寺 forecourt, a shortcut the user drew on a screenshot
 // (2026-10-01; on no published map). Traced between the mapped footprints, about 1.2 m wide.
@@ -1324,27 +1318,10 @@ function cardBase(title,tag,{cat='',sub='',hero=null,featured=false}={}){
  if(take||focusLost())focusOn(h2);
  return body;
 }
-// Photos open inside the page and swipe sideways, including embedded offline images.
-// The page behind it is inert while it is open (syncViewShift), so focus stays inside; closing returns it to the photo.
-function openViewer(srcs,start,title='居之林民宿实拍',photos=[],opener=document.activeElement){const v=$('#viewer'),strip=v.querySelector('.viewer-strip'),count=v.querySelector('.viewer-count'),prev=v.querySelector('.viewer-prev'),next=v.querySelector('.viewer-next');
- if(!v.classList.contains('show'))v._opener=opener;
- v.setAttribute('aria-label',title+'照片');
- let caption=v.querySelector('.viewer-caption');if(!caption){caption=node('div','viewer-caption');caption.onclick=e=>e.stopPropagation();v.append(caption);}
- strip.replaceChildren(...srcs.map((src,i)=>{const f=node('div','slide'),img=node('img');img.src=src;img.alt=photos[i]?.alt||title+' · '+(i+1);f.append(img);return f;}));
- // ‹ and › are disabled at either end (both hidden for a single photo); one about to be disabled under focus hands it on.
- const at=()=>clamp(Math.round(strip.scrollLeft/Math.max(1,strip.clientWidth)),0,srcs.length-1),upd=()=>{const i=at();count.textContent=`${i+1} / ${srcs.length}`;caption.replaceChildren();const photo=photos[i];caption.hidden=!photo;if(photo){caption.append(node('span','',photo.alt));if(photo.sourceUrl)caption.append(photoCredit(photo));}
-  const f=document.activeElement;prev.hidden=next.hidden=srcs.length<2;prev.disabled=i===0;next.disabled=i===srcs.length-1;
-  if(f===prev&&prev.disabled||f===next&&next.disabled)(next.disabled&&prev.disabled?v.querySelector('.viewer-close'):f===prev?next:prev).focus({preventScroll:true});};strip.onscroll=upd;
- const go=d=>strip.scrollTo({left:clamp(at()+d,0,srcs.length-1)*strip.clientWidth,behavior:reduce?'auto':'smooth'});v._go=go;
- prev.onclick=e=>{e.stopPropagation();go(-1);};next.onclick=e=>{e.stopPropagation();go(1);};v.onclick=closeViewer;
- reveal(v);strip.scrollLeft=start*strip.clientWidth;upd();syncViewShift();v.querySelector('.viewer-close').focus({preventScroll:true});}
-function closeViewer(){const v=$('#viewer'),o=v._opener,had=v.contains(document.activeElement);v._opener=null;conceal(v,260);syncViewShift();if(had||focusLost())restoreFocus(o,$('#card .card-head h2'));}
+const {open:openViewer,close:closeViewer}=createPhotoViewer({reducedMotion:reduce,onToggle:()=>syncViewShift(),focusLost,restoreFocus,fallbackFocus:()=>$('#card .card-head h2')});
 const CAT={temple:'寺院',sight:'景点',nature:'山水景观',village:'村落地名',service:'公共服务',transport:'交通',hotel:'住宿',food:'餐饮',shop:'购物'};
 const TEL='17356648281',TEL_TEXT='173 5664 8281';
 function more(title){const d=node('details','more');d.append(node('summary','',title));return d;}
-function photoCredit(photo){const credit=node('div','photo-credit');
- const text=[photo.author&&`摄影：${photo.author}`,photo.takenAt&&`拍摄于 ${photo.takenAt}`].filter(Boolean).join(' · ');if(text)credit.append(node('span','',text+' · '));
- for(const [label,url]of [[photo.sourceName||'图片出处',photo.sourceUrl],[photo.license,photo.licenseUrl]]){if(!label||!url)continue;const a=node('a','',label);a.href=url;a.target='_blank';a.rel='noopener noreferrer';if(credit.lastChild?.tagName==='A')credit.append(' · ');credit.append(a);}return credit;}
 function actionBtn(cls,svg,text){const b=node('button','btn '+cls);b.type='button';b.innerHTML=svg;b.append(text);return b;}
 const ROUTE_SVG='<svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8.2 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.8"/></svg>',ORBIT_SVG='<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>',PHONE_SVG='<svg viewBox="0 0 24 24"><path d="M6.5 3.5h3l1.5 4-2 1.3a11 11 0 0 0 6.2 6.2l1.3-2 4 1.5v3a2 2 0 0 1-2 2A16.5 16.5 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/></svg>';
 // 居之林's card offers its half-day route, or, while a route preview is paused, to carry on with it. The route can change
@@ -1365,9 +1342,11 @@ function selectPlace(p,doFly){noteCardOpener();deselect();selected=p;if(p.el)p.e
  if(p.featured){hero=node('div','card-hero');// Photo sizes (all 960 wide) are set up front: in Safari a strip of still-zero-width images makes scroll-snap settle on a later photo.
  const photos=[['jzl-1',640],['jzl-2',541],['jzl-5',720],['jzl-6',540],['jzl-3',540],['jzl-4',640]],srcs=photos.map(([f])=>{const path=`media/juzhilin/${f}.jpg`;return window.__JIUHUA_MEDIA__?.[path]||path;});
  for(const[i,src]of srcs.entries()){const a=node('a');a.href=src;a.target='_blank';a.rel='noopener';a.onclick=e=>{e.preventDefault();openViewer(srcs,i,undefined,undefined,a);};const img=node('img');img.width=960;img.height=photos[i][1];img.src=src;img.alt='居之林民宿实拍';img.loading='lazy';a.append(img);hero.append(a);}}
+ // The strip loads the small card thumbnail (photo_thumbs.py); tapping opens the original in the viewer.
+ // The offline file embeds only the originals (no download cost there), so its cards use those.
  const placePhotos=[...(p.photos||[]),...(p.viewing?.photos||[])];
  if(placePhotos.length){hero=node('div','card-hero');const photos=placePhotos,srcs=photos.map(photo=>window.__JIUHUA_MEDIA__?.[photo.src]||photo.src);
- for(const [i,photo]of photos.entries()){const a=node('a');a.href=srcs[i];a.setAttribute('aria-label',photo.alt+'，点开放大');a.onclick=e=>{e.preventDefault();openViewer(srcs,i,p.n,photos,a);};const img=node('img');img.src=srcs[i];img.width=photo.width;img.height=photo.height;img.alt=photo.alt;img.loading='lazy';a.append(img);if(photo.takenAt)a.append(node('span','photo-date',photo.takenAt.slice(0,4)+'年实拍 · 点开放大'));hero.append(a);}}
+ for(const [i,photo]of photos.entries()){const a=node('a');a.href=srcs[i];a.setAttribute('aria-label',photo.alt+'，点开放大');a.onclick=e=>{e.preventDefault();openViewer(srcs,i,p.n,photos,a);};const img=node('img'),media=window.__JIUHUA_MEDIA__,thumb=photo.thumb&&(media?media[photo.thumb]:photo.thumb);img.src=thumb||srcs[i];img.width=photo.width;img.height=photo.height;img.alt=photo.alt;img.loading='lazy';a.append(img);if(photo.takenAt)a.append(node('span','photo-date',photo.takenAt.slice(0,4)+'年实拍 · 点开放大'));hero.append(a);}}
  const card=cardBase(p.displayName||(p.featured?p.shortName:p.n),p.featured?'精选民宿 · 实拍建模':CAT[p.category]||'地点',{cat:p.category,hero,featured:!!p.featured});
  const chips=node('div','chips');if(p.address||p.zone)chips.append(node('span','',p.address||p.zone));if(p.featured)chips.append(node('span','','业主实拍 · 三维建模'));chips.append(node('span','',`海拔约 ${Math.round(realH(hAt(p.x,p.z)))} m`));if(p.halls?.length)chips.append(node('span','',`殿堂 ${p.halls.length} 处`));if(p.transit?.length)chips.append(node('span','','景区交通站点'));const summary=node('div','card-summary');summary.append(chips);card.append(summary);if(p.featured)routeTeaser(card);
  if(p.featured)card.append(node('p','lead','三层退台的山地民宿：屋顶露台远眺九华诸峰，二层木平台与罗汉松小院，门前停车场带充电桩，挡墙上方是挂满灯笼的大松树。'));
@@ -1475,99 +1454,12 @@ $('#route-hud .rh-close').onclick=()=>{const had=$('#route-hud').contains(docume
 setupSheetDrag({compact:compactViewport,closePanel:()=>panelFocusBack(hidePanel())});addEventListener('sheetchange',()=>syncViewShift());
 $('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>{treesChoice=e.target.checked;applyTrees();};$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
 $('#height').oninput=e=>{const old=world.scale.y;EX=+e.target.value;const sc=EX/EXAG;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=sc;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`地形增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(sc-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(sc-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*sc;for(const q of extraLabels)q.label.position.y=(q.top+4)*sc;};
-const S=G.stats,ST=S.buildingStyles||{};
-const pubCount=places.filter(p=>p.searchable&&['service','transport'].includes(p.category)).length,sightCount=places.filter(p=>['sight','nature','village'].includes(p.category)).length;
-const dataText=`<p>本次更新：2026 年 9 月 28 日。覆盖约 ${(W/1000).toFixed(2)} × ${(D/1000).toFixed(2)} 公里，重点为九华街、百岁宫、闵园、天台与花台。它是依据公开资料重建的可交互模型，不是倾斜摄影或实测成果。</p>
-<table><tr><th>内容</th><th>依据与精度</th></tr>
-<tr><td>居之林民宿</td><td>按业主提供的实拍照片与航拍图手工建模；现有卫星影像早于新建，落位按门牌顺序估计，尺寸按照片比例估计。</td></tr>
-<tr><td>${S.buildings} 个建筑轮廓</td><td>${S.osmBuildings} 个 OpenStreetMap 轮廓 + ${S.supplementaryBuildings} 个 Overture 影像识别补充轮廓。楼层、墙色、瓦色、马头墙、披檐、店面按片区规律分配（${S.levelsRankedByGlobfp||0} 栋的楼层高低顺序参考 3D-GloBFP 估算高度），规律来自规划文件与公开照片，逐栋未实测。点建筑可看依据。</td></tr>
-<tr><td>地点标注</td><td>寺庙 ${S.temples} · 景点山水与村落 ${sightCount} · 公共设施 ${pubCount}（车站、索道、停车场、公厕、游客中心、派出所、医院等）；另有 ${S.halls} 处殿堂小标注。多个平台的同一地点已合并。除居之林外，地图不标注商家。</td></tr>
-<tr><td>真实地形</td><td>Copernicus GLO-30（2011–2015 雷达测量），257×257 网格约 21 m 间距；与 SRTM 相比峰顶和索道高差更接近官方数据。局部与其他高程源相差 30 m 以上的格点取四源中位数。仍是表面模型（含树冠）。</td></tr>
-<tr><td>主要寺院</td><td>化城寺、祇园寺、肉身宝殿、百岁宫、旃檀禅林等的墙色、瓦色、屋顶形式依据官方规划、公开照片与卫星影像；殿体比例、细部仍属复原。</td></tr></table>
-<h3>景区交通（官网 ${G.transit?.retrieved||''}）</h3>${(G.transit?.routes||[]).map(r=>`<p><b>${r.name}</b>　${r.hours}<br><small>${r.stops.join(' → ')}${r.note?'。'+r.note:''}</small></p>`).join('')}<p>${(G.transit?.cableways||[]).map(c=>`${c.name} ${c.hours}`).join('　·　')}<br><small>旅游咨询 ${G.transit?.hotlines?.['旅游咨询投诉']||''} · 紧急救援 ${G.transit?.hotlines?.['紧急救援']||''} · 尚无公开坐标的站点：${(G.transit?.unlocatedStops||[]).join('、')}</small></p>
-<h3>坐标与数据质量</h3><p>去哪儿、360 地图等平台的 GCJ-02 坐标均用 coordtransform 换算为 WGS84，原始坐标保存在数据中；每个数据集都经过独立抽检。维基数据等开放数据中约 1 km 偏移的寺庙点（百度坐标误标为 WGS84）未用于定位。地点定位依据可在简介卡的“资料与依据”中查看。</p>
-<h3>资料与许可</h3><p><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors / ODbL</a> · <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">Overture Maps：建筑 ODbL；地点 CDLA-Permissive 2.0</a> · <a href="https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model" target="_blank" rel="noopener">Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018，由 ESA 在 Copernicus 计划下提供</a> · <a href="https://www.jiuhuashan.gov.cn/file_cz/54/202506/202506269aaa0b14711f440284eefd14e047a66e.pdf" target="_blank" rel="noopener">九华山官方地质公园规划</a> · <a href="https://doi.org/10.5194/essd-16-5357-2024" target="_blank" rel="noopener">3D-GloBFP 建筑高度（Che 等 2024，CC BY 4.0）</a>，仅用于同片区内楼层高低排序 · 去哪儿、360 地图公开页面（逐条链接见地点卡片）</p><p>补充建筑由 Qian Shi 等的东亚建筑数据经 Overture 提供，原始数据为 <a href="https://doi.org/10.5281/zenodo.8174931" target="_blank" rel="noopener">CC BY 4.0</a>；本项目做了裁剪、去重与屋顶重建。官方照片与公开照片仅用于归纳外观规律，未作为贴图。</p>`;
-$('#data-content').innerHTML=dataText;let dataOpener=null;$('#credit-data').onclick=$('#credit-mobile').onclick=e=>{dataOpener=e.currentTarget;closeMobileSheets('data');$('#data-dialog').showModal();syncViewShift();};$('#data-close').onclick=closeDialog;$('#data-dialog').onclick=e=>{if(e.target===$('#data-dialog'))closeDialog();};
+$('#data-content').innerHTML=dataNotesHtml({W,D,stats:G.stats,transit:G.transit,places});let dataOpener=null;$('#credit-data').onclick=$('#credit-mobile').onclick=e=>{dataOpener=e.currentTarget;closeMobileSheets('data');$('#data-dialog').showModal();syncViewShift();};$('#data-close').onclick=closeDialog;$('#data-dialog').onclick=e=>{if(e.target===$('#data-dialog'))closeDialog();};
 // The browser hands focus back to the credits button as the dialog closes, but on a phone the credits row is still
 // hidden at that moment (the open dialog hides the map chrome), so focus falls to the page; once the row is back, it goes there.
 $('#data-dialog').addEventListener('close',()=>{if(!started)return;syncViewShift();if(focusLost())restoreFocus(dataOpener,$('#credit-mobile'),$('#credit-data'));dataOpener=null;});
-// PNG export: the 3D frame, then each label painted from its computed style (so the image follows style.css), the brand
-// box and the credits. Canvas shadow blur and offsets ignore the context scale, hence the k factor.
-const cssToken=k=>getComputedStyle(document.documentElement).getPropertyValue(k).trim();
-const COLOR=/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi;
-function roundPath(c,x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h/2));c.beginPath();if(c.roundRect)c.roundRect(x,y,w,h,r);else{c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}}
-// A CSS linear-gradient (first and last stop, its angle) or plain background colour; null when transparent.
-function cssFill(c,image,color,r){const stops=image&&image!=='none'&&image.match(COLOR);
- if(stops&&stops.length>1){const a=(+(image.match(/([\d.]+)deg/)?.[1]??180))*Math.PI/180,dx=Math.sin(a),dy=-Math.cos(a),l=(Math.abs(r.width*dx)+Math.abs(r.height*dy))/2,cx=r.x+r.width/2,cy=r.y+r.height/2;
-  const g=c.createLinearGradient(cx-dx*l,cy-dy*l,cx+dx*l,cy+dy*l);g.addColorStop(0,stops[0]);g.addColorStop(1,stops.at(-1));return g;}
- return !color||/^transparent$|^rgba\(.*,\s*0\)$/.test(color)?null:color;}
-// Canvas letter-spacing is not in every browser yet, so glyphs are set one by one.
-function spacedText(c,text,x,y,ls){for(const ch of text){c.fillText(ch,x,y);x+=c.measureText(ch).width+ls;}return x;}
-const spacedWidth=(c,text,ls)=>c.measureText(text).width+[...text].length*ls;
-function paintBox(c,cs,r,k){const rad=parseFloat(cs.borderTopLeftRadius)||0,fill=cssFill(c,cs.backgroundImage,cs.backgroundColor,r),bw=parseFloat(cs.borderTopWidth)||0;
- const shadows=cs.boxShadow==='none'?[]:cs.boxShadow.split(/,(?![^(]*\))/).filter(s=>!/inset/.test(s)).map(s=>({col:s.match(COLOR)?.[0]||'transparent',v:s.replace(COLOR,'').trim().split(/\s+/).map(parseFloat)}));
- for(const s of shadows)if(!s.v[2]&&s.v[3]>0){roundPath(c,r.x+s.v[0]-s.v[3],r.y+s.v[1]-s.v[3],r.width+2*s.v[3],r.height+2*s.v[3],rad+s.v[3]);c.fillStyle=s.col;c.fill();} // rings
- if(fill){const soft=shadows.filter(s=>s.v[2]>0).sort((a,b)=>b.v[2]-a.v[2])[0];c.save();if(soft){c.shadowColor=soft.col;c.shadowBlur=soft.v[2]*k*.8;c.shadowOffsetX=soft.v[0]*k;c.shadowOffsetY=soft.v[1]*k;}
-  roundPath(c,r.x,r.y,r.width,r.height,rad);c.fillStyle=fill;c.fill();c.restore();}
- if(bw&&cs.borderTopStyle!=='none'&&cssFill(c,'none',cs.borderTopColor,r)){c.lineWidth=bw;c.strokeStyle=cs.borderTopColor;c.setLineDash(cs.borderTopStyle==='dashed'?[3,2]:[]);roundPath(c,r.x+bw/2,r.y+bw/2,r.width-bw,r.height-bw,rad-bw/2);c.stroke();c.setLineDash([]);}}
-function paintContent(c,parent,k){for(const n of parent.childNodes){
- if(n.nodeType===3){const t=n.textContent;if(!t.trim())continue;const cs=getComputedStyle(parent),range=document.createRange();range.selectNodeContents(n);const tr=range.getBoundingClientRect(),ls=parseFloat(cs.letterSpacing)||0,y=tr.y+tr.height/2;
-  c.font=`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;c.textAlign='left';c.textBaseline='middle';
-  c.fillStyle=cs.color;
-  // a text-shadow (the village names' white halo) as two soft glows under the glyphs
-  if(cs.textShadow!=='none'){c.save();c.shadowColor='rgba(255,255,255,.95)';for(const blur of[3,9]){c.shadowBlur=blur*k;spacedText(c,t,tr.x,y,ls);}c.restore();}
-  spacedText(c,t,tr.x,y,ls);continue;}
- if(n.nodeType!==1)continue;const cs=getComputedStyle(n);if(cs.display==='none'||cs.visibility==='hidden'||+cs.opacity<.05)continue;const r=n.getBoundingClientRect();
- if(n.tagName.toLowerCase()==='svg'){const vb=n.viewBox?.baseVal,path=n.querySelector('path');if(path&&vb?.width){c.save();c.translate(r.x,r.y);c.scale(r.width/vb.width,r.height/vb.height);c.fillStyle=cs.fill;c.fill(new Path2D(path.getAttribute('d')));c.restore();}continue;}
- paintBox(c,cs,r,k);paintContent(c,n,k);}}
-function paintLabel(c,el,k,bottom){const b=el.querySelector('button'),cs=getComputedStyle(b),r=b.getBoundingClientRect();
- if(!r.width||cs.visibility==='hidden'||r.x<0||r.y<0||r.right>innerWidth||r.bottom>bottom)return;
- // stem and ground dot (route-stop stems fade when veiled; others only have the entrance fade, ignored here). A place
- // label's stem is a leader from its point (the bottom centre of the label box) to the pill's nearest edge.
- const i=el.querySelector('i'),is=i&&getComputedStyle(i);
- if(is&&is.display!=='none'){const as=getComputedStyle(i,'::after'),d=parseFloat(as.width)||0;c.save();
-  let cx,cy;
-  if(el.classList.contains('pin')){const er=el.getBoundingClientRect();cx=er.x+er.width/2;cy=er.bottom;const tx=clamp(cx,r.x,r.right),ty=clamp(cy,r.y,r.bottom);
-   if(Math.hypot(tx-cx,ty-cy)>=3){const lw=parseFloat(is.height)||1.5,halo=is.boxShadow.match(/rgba?\([^)]*\)/);c.lineCap='round';
-    if(halo){c.strokeStyle=halo[0];c.lineWidth=lw+1.5;c.beginPath();c.moveTo(cx,cy);c.lineTo(tx,ty);c.stroke();}
-    c.strokeStyle=is.backgroundColor;c.lineWidth=lw;c.beginPath();c.moveTo(cx,cy);c.lineTo(tx,ty);c.stroke();}}
-  else{const ir=i.getBoundingClientRect();c.globalAlpha=el.classList.contains('route-stop')?+is.opacity:1;
-   c.fillStyle=cssFill(c,is.backgroundImage,is.backgroundColor,ir)||'transparent';c.fillRect(ir.x,ir.y,ir.width,ir.height);cx=ir.x+ir.width/2;cy=ir.bottom-(parseFloat(as.bottom)||0)-d/2;}
-  if(d){const ring=as.boxShadow.match(/(rgba?\([^)]*\)) 0px 0px 0px ([\d.]+)px/);
-   if(ring){c.fillStyle=ring[1];c.beginPath();c.arc(cx,cy,d/2+ +ring[2],0,7);c.fill();}c.fillStyle=as.backgroundColor;c.beginPath();c.arc(cx,cy,d/2,0,7);c.fill();}
-  c.restore();}
- paintBox(c,cs,r,k);
- const dot=getComputedStyle(b,'::before'),d=parseFloat(dot.width)||0;
- if(d&&dot.display!=='none'&&dot.content!=='none'){c.fillStyle=dot.backgroundColor;c.beginPath();c.arc(r.x+(parseFloat(cs.borderLeftWidth)||0)+(parseFloat(cs.paddingLeft)||0)+d/2,r.y+r.height/2,d/2,0,7);c.fill();}
- paintContent(c,b,k);}
-$('#capture').onclick=()=>{
- // At least the screen's pixel ratio (up to 2), so labels and text stay sharp when the 3D frame runs at a lowered resolution.
- const vw=innerWidth,vh=innerHeight,k=Math.min(2,Math.max(devicePixelRatio||1,renderer.domElement.width/vw)),out=document.createElement('canvas');out.width=Math.round(vw*k);out.height=Math.round(vh*k);
- const c=out.getContext('2d'),sans=cssToken('--sans')||'sans-serif',serif=cssToken('--serif')||'serif',ink=cssToken('--ink')||'#1c2a25',muted=cssToken('--muted')||'#5c6962';
- // Credits, wrapped to the image width, in a rice-paper strip along the bottom.
- c.font=`10.5px ${sans}`;const lines=[];
- for(const group of[['© OpenStreetMap contributors','Overture Maps Foundation','Copernicus DEM (ESA)','去哪儿/360地图/OSM 公开地点'],['补充轮廓：Qian Shi 等 / CC BY 4.0','建筑楼高、立面及植被为近似复原']]){let line='';
-  for(const s of group){const t=line?line+' · '+s:s;if(line&&c.measureText(t).width>vw-24){lines.push(line);line=s;}else line=t;}lines.push(line);}
- const footH=12+lines.length*15;
- // Brand box as on the page: rice paper, the vermilion seal (九 over 华), the serif wordmark, subtitle and data line.
- const m=vw<600?12:24,pad=15,seal=44,tx=m+pad+seal+13,title='九华山',sub='三维实地导览 · 走近九华',meta=`${G.stats.buildings} 建筑轮廓 · ${G.stats.places} 地点 · 2026.09.27`;
- c.font=`600 26px ${serif}`;const tw=spacedWidth(c,title,3.64);c.font=`12.5px ${sans}`;const sw=spacedWidth(c,sub,.75);c.font=`11px ${sans}`;const mw=c.measureText(meta).width;
- const bw=tx-m+Math.max(tw,sw,mw)+20,bh=pad*2+66;
- // The image has none of the page's chrome, only its own brand box and credits strip: labels are placed clear of those;
- // the next frame places them for the screen again.
- camera.updateMatrixWorld();updateLabels([[m,m,m+bw,m+bh],[0,vh-footH,vw,vh]]);syncMist();renderer.render(scene,camera);routes?.updateLabels(performance.now());renderLabelLayer();labelsDirty=true;
- c.fillStyle='#dce5df';c.fillRect(0,0,out.width,out.height);c.drawImage(renderer.domElement,0,0,out.width,out.height);c.scale(k,k);
- for(const el of[...labels.domElement.children].filter(e=>e.classList.contains('maplabel')&&e.style.display!=='none').sort((a,b)=>(parseInt(getComputedStyle(a).zIndex)||0)-(parseInt(getComputedStyle(b).zIndex)||0)))paintLabel(c,el,k,vh-footH);
- c.save();c.shadowColor='rgba(20,32,27,.24)';c.shadowBlur=20*k;c.shadowOffsetY=6*k;roundPath(c,m,m,bw,bh,18);c.fillStyle='rgba(251,249,243,.96)';c.fill();c.restore();
- c.lineWidth=1;c.strokeStyle='rgba(28,42,37,.09)';roundPath(c,m+.5,m+.5,bw-1,bh-1,17.5);c.stroke();
- const sx=m+pad,sy=m+pad,zhu=(cssToken('--zhu-fill').match(COLOR)||['#c24536','#a8322a']);
- c.fillStyle=cssFill(c,`linear-gradient(160deg, ${zhu[0]}, ${zhu.at(-1)})`,null,{x:sx,y:sy,width:seal,height:seal});roundPath(c,sx,sy,seal,seal,10);c.fill();
- c.lineWidth=2;c.strokeStyle='#b23a2d';roundPath(c,sx+1,sy+1,seal-2,seal-2,9);c.stroke();c.lineWidth=1;c.strokeStyle='rgba(251,241,230,.55)';roundPath(c,sx+2.5,sy+2.5,seal-5,seal-5,7.5);c.stroke();
- c.fillStyle='#fbf1e6';c.font=`600 16px ${serif}`;c.textAlign='center';c.textBaseline='middle';c.fillText('九',sx+seal/2,sy+seal/2-8.5);c.fillText('华',sx+seal/2,sy+seal/2+8.5);
- c.textAlign='left';c.textBaseline='alphabetic';c.fillStyle=ink;c.font=`600 26px ${serif}`;spacedText(c,title,tx,sy+25,3.64);
- c.fillStyle=muted;c.font=`12.5px ${sans}`;spacedText(c,sub,tx,sy+46,.75);c.font=`11px ${sans}`;c.fillText(meta,tx,sy+64);
- c.fillStyle='rgba(251,249,243,.95)';c.fillRect(0,vh-footH,vw,footH);c.fillStyle='rgba(28,42,37,.09)';c.fillRect(0,vh-footH,vw,1);
- c.fillStyle=muted;c.font=`10.5px ${sans}`;c.textBaseline='middle';lines.forEach((t,i)=>c.fillText(t,12,vh-footH+13.5+i*15));
+// PNG export (map-export.js). The next frame places the labels for the screen again.
+$('#capture').onclick=()=>{const out=exportMapImage({frame:renderer.domElement,stats:G.stats,render:keepClear=>{camera.updateMatrixWorld();updateLabels(keepClear);syncMist();renderer.render(scene,camera);routes?.updateLabels(performance.now());renderLabelLayer();labelsDirty=true;return [...labels.domElement.children];}});
  const a=document.createElement('a');a.download='九华山三维地图-实景增强版.png';a.href=out.toDataURL('image/png');a.click();toast('当前三维画面已导出');
 };
 

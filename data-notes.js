@@ -1,0 +1,14 @@
+// The 资料与许可 dialog: what the model is built from and how far each part can be trusted.
+export function dataNotesHtml({W,D,stats:S,transit,places}){
+const pubCount=places.filter(p=>p.searchable&&['service','transport'].includes(p.category)).length,sightCount=places.filter(p=>['sight','nature','village'].includes(p.category)).length;
+return `<p>本次更新：2026 年 9 月 28 日。覆盖约 ${(W/1000).toFixed(2)} × ${(D/1000).toFixed(2)} 公里，重点为九华街、百岁宫、闵园、天台与花台。它是依据公开资料重建的可交互模型，不是倾斜摄影或实测成果。</p>
+<table><tr><th>内容</th><th>依据与精度</th></tr>
+<tr><td>居之林民宿</td><td>按业主提供的实拍照片与航拍图手工建模；现有卫星影像早于新建，落位按门牌顺序估计，尺寸按照片比例估计。</td></tr>
+<tr><td>${S.buildings} 个建筑轮廓</td><td>${S.osmBuildings} 个 OpenStreetMap 轮廓 + ${S.supplementaryBuildings} 个 Overture 影像识别补充轮廓。楼层、墙色、瓦色、马头墙、披檐、店面按片区规律分配（${S.levelsRankedByGlobfp||0} 栋的楼层高低顺序参考 3D-GloBFP 估算高度），规律来自规划文件与公开照片，逐栋未实测。点建筑可看依据。</td></tr>
+<tr><td>地点标注</td><td>寺庙 ${S.temples} · 景点山水与村落 ${sightCount} · 公共设施 ${pubCount}（车站、索道、停车场、公厕、游客中心、派出所、医院等）；另有 ${S.halls} 处殿堂小标注。多个平台的同一地点已合并。除居之林外，地图不标注商家。</td></tr>
+<tr><td>真实地形</td><td>Copernicus GLO-30（2011–2015 雷达测量），257×257 网格约 21 m 间距；与 SRTM 相比峰顶和索道高差更接近官方数据。局部与其他高程源相差 30 m 以上的格点取四源中位数。仍是表面模型（含树冠）。</td></tr>
+<tr><td>主要寺院</td><td>化城寺、祇园寺、肉身宝殿、百岁宫、旃檀禅林等的墙色、瓦色、屋顶形式依据官方规划、公开照片与卫星影像；殿体比例、细部仍属复原。</td></tr></table>
+<h3>景区交通（官网 ${transit?.retrieved||''}）</h3>${(transit?.routes||[]).map(r=>`<p><b>${r.name}</b>　${r.hours}<br><small>${r.stops.join(' → ')}${r.note?'。'+r.note:''}</small></p>`).join('')}<p>${(transit?.cableways||[]).map(c=>`${c.name} ${c.hours}`).join('　·　')}<br><small>旅游咨询 ${transit?.hotlines?.['旅游咨询投诉']||''} · 紧急救援 ${transit?.hotlines?.['紧急救援']||''} · 尚无公开坐标的站点：${(transit?.unlocatedStops||[]).join('、')}</small></p>
+<h3>坐标与数据质量</h3><p>去哪儿、360 地图等平台的 GCJ-02 坐标均用 coordtransform 换算为 WGS84，原始坐标保存在数据中；每个数据集都经过独立抽检。维基数据等开放数据中约 1 km 偏移的寺庙点（百度坐标误标为 WGS84）未用于定位。地点定位依据可在简介卡的“资料与依据”中查看。</p>
+<h3>资料与许可</h3><p><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors / ODbL</a> · <a href="https://docs.overturemaps.org/attribution/" target="_blank" rel="noopener">Overture Maps：建筑 ODbL；地点 CDLA-Permissive 2.0</a> · <a href="https://spacedata.copernicus.eu/collections/copernicus-digital-elevation-model" target="_blank" rel="noopener">Copernicus DEM GLO-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018，由 ESA 在 Copernicus 计划下提供</a> · <a href="https://www.jiuhuashan.gov.cn/file_cz/54/202506/202506269aaa0b14711f440284eefd14e047a66e.pdf" target="_blank" rel="noopener">九华山官方地质公园规划</a> · <a href="https://doi.org/10.5194/essd-16-5357-2024" target="_blank" rel="noopener">3D-GloBFP 建筑高度（Che 等 2024，CC BY 4.0）</a>，仅用于同片区内楼层高低排序 · 去哪儿、360 地图公开页面（逐条链接见地点卡片）</p><p>补充建筑由 Qian Shi 等的东亚建筑数据经 Overture 提供，原始数据为 <a href="https://doi.org/10.5281/zenodo.8174931" target="_blank" rel="noopener">CC BY 4.0</a>；本项目做了裁剪、去重与屋顶重建。官方照片与公开照片仅用于归纳外观规律，未作为贴图。</p>`;
+}
