@@ -70,12 +70,16 @@ export function setupRoutes(ctx) {
     clearDrawing();
     const pts3 = [];
     route.legs.forEach((leg, li) => leg.parts.forEach(part => {
-      const pts = sample(part), color = MODES[part.mode].color, ride = part.mode !== 'walk';
-      // faint copy drawn through hills and roofs so the whole route stays readable, then a white casing and the line
-      line(pts, color, 4, {depthTest: false, opacity: .38, order: 4, dashed: ride});
-      line(pts, '#ffffff', 8.5, {order: 5});
-      line(pts, color, 5, {order: 6, dashed: ride});
-      for (const p of pts) pts3.push({p, mode: part.mode, leg: li});
+      const color = MODES[part.mode].color, ride = part.mode !== 'walk';
+      const segments = part.segments || [{pts: part.pts, estimated: false}];
+      for (const segment of segments) {
+        const pts = sample({...part, pts: segment.pts}), schematic = segment.estimated;
+        const opts = {dashed: ride || schematic};
+        line(pts, color, 4, {...opts, depthTest: false, opacity: .38, order: 4});
+        line(pts, '#ffffff', 8.5, {...opts, order: 5});
+        line(pts, color, 5, {...opts, opacity: schematic ? .75 : 1, order: 6});
+        for (const p of pts) pts3.push({p, mode: part.mode, leg: li});
+      }
     }));
     // a place visited twice (out and back) gets one label carrying both numbers, e.g. “2·12”. Each stop is a small numbered
     // dot; its name sits beside the dot and is shown only where it fits (see placeNames).
@@ -367,7 +371,9 @@ export function setupRoutes(ctx) {
       if (p.mode === 'bus') return `坐${p.line}约 ${p.minutes} 分钟 · ${km(p.m)}`;
       return `坐${p.line}约 ${p.minutes} 分钟`;
     });
-    return parts.join('，再');
+    const estimated = leg.parts.flatMap(p => p.segments || []).filter(s => s.estimated).reduce((m, s) => m + s.m, 0);
+    const end = leg.parts.at(-1)?.segments?.at(-1), endM = end?.estimated ? end.m : 0;
+    return parts.join('，再') + (estimated >= 1 ? ` · 含约 ${km(estimated)}直线示意接驳（未核实通行${endM >= 10 ? `，末段约 ${km(endM)}` : ''}）` : '');
   }
   function legIcon(leg) { const m = leg.parts.find(p => p.mode !== 'walk')?.mode; return m === 'bus' ? BUS_SVG : m ? RIDE_SVG : WALK_SVG; }
 
@@ -402,11 +408,12 @@ export function setupRoutes(ctx) {
     });
     const tips = el('ul', 'route-tips'); for (const t of route.tips) tips.append(el('li', '', t));
     const more = el('details', 'more'); more.append(el('summary', '', '资料与依据'));
-    more.append(el('p', '', '线路沿地图上的步道、台阶和街道绘制；地图上没有画出的台阶、穿过广场和北门门楼的一段以及进出寺院的最后一小段按直线示意。步行时间按距离和坡度估算（台阶按慢三成计），每个人快慢不同；标“业主提供”的为居之林业主给出的时间。缆车、索道和景交车的乘坐时间按线路长度估算，不含排队。开放和运行时间以现场公示为准。'));
+    more.append(el('p', '', '线路沿地图上的步道、台阶和街道绘制；地图缺失处、点位到路网、穿过广场和北门门楼等强制连接段按直线示意（虚线），不代表实测或已核实可通行道路，请以现场道路为准。步行时间按距离和坡度估算（台阶用时增加三成），每个人快慢不同；标“业主提供”的为居之林业主给出的时间。缆车、索道和景交车的乘坐时间按线路长度估算，不含排队。开放和运行时间以现场公示为准。'));
     const links = el('div', 'links');
     for (const s of route.sources) { if (s.url) { const a = el('a', '', s.name); a.href = s.url; a.target = '_blank'; a.rel = 'noopener'; links.append(a); } else links.append(el('span', '', s.name)); }
     more.append(links);
-    detail.append(top, el('h3', 'route-title', route.name), stats, acts, el('p', 'route-summary', route.summary), profile(route), steps,
+    const legend = el('p', 'route-summary route-legend', '橙色实线：地图步道；橙色虚线：直线示意接驳，未核实可通行；蓝／紫虚线：乘车段（其中直线接驳见行程提示）。');
+    detail.append(top, el('h3', 'route-title', route.name), stats, acts, legend, el('p', 'route-summary', route.summary), profile(route), steps,
       el('h4', '', '出发前看看'), tips, more);
     detail.scrollTop = 0;
   }

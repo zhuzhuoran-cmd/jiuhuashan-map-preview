@@ -66,7 +66,7 @@ setTimeout(function(){var l=document.getElementById('loading'),r=document.getEle
  <div class="panel-tabs" role="tablist" aria-label="面板内容"><button id="tab-btn-routes" role="tab" data-tab="routes" aria-selected="true" aria-controls="tab-routes">推荐路线</button><button id="tab-btn-places" role="tab" data-tab="places" aria-selected="false" aria-controls="tab-places">找地点</button><button id="tab-btn-guide" role="tab" data-tab="guide" aria-selected="false" aria-controls="tab-guide">游览须知</button><span class="tab-ind" aria-hidden="true"></span></div>
  <div id="tab-routes" class="tab-pane routes-pane" role="tabpanel" aria-labelledby="tab-btn-routes"><div id="route-list" class="route-list"></div><div id="route-detail" class="route-detail" tabindex="0" role="region" aria-label="路线详情" hidden></div></div>
  <div id="tab-places" class="tab-pane places-pane" role="tabpanel" aria-labelledby="tab-btn-places" hidden>
- <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" aria-label="搜索寺庙、景点或公共设施" placeholder="搜索寺庙、景点、车站、公厕…" autocomplete="off"></label>
+ <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg><input id="search" type="search" maxlength="200" aria-label="搜索寺庙、景点、公共设施或商家" placeholder="搜索寺庙、景点、车站、公厕…" autocomplete="off"></label>
  <div id="categories" class="categories"><button data-category="all" class="active">全部</button><button data-category="temple">寺庙</button><button data-category="sight">景点山水</button><button data-category="service">公共服务</button></div>
  <div class="list-summary" id="list-summary"></div>
  <div id="place-list" class="place-list" tabindex="0" role="region" aria-label="地点列表"></div>
@@ -126,4 +126,4 @@ setTimeout(function(){var l=document.getElementById('loading'),r=document.getEle
 </div>
 <div id="viewer" class="viewer" role="dialog" aria-modal="true" aria-label="居之林民宿实拍照片" hidden><div class="viewer-strip"></div><button class="viewer-close icon-btn" type="button" aria-label="关闭照片"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button><button class="viewer-prev icon-btn" type="button" aria-label="上一张"><svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg></button><button class="viewer-next icon-btn" type="button" aria-label="下一张"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button><div class="viewer-count" aria-live="polite"></div></div>
 <div id="toast" role="status" hidden></div>
-</main><script type="module" src="app.js?v=20261003-v2-merged"></script></body></html>
+</main><script type="module" src="app.js?v=20261004-local-search"></script></body></html>

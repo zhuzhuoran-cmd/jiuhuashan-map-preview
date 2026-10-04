@@ -1,9 +1,11 @@
+import {createPlaceSearch,bindPlaceSearch,normalizeSearch} from './place-search.js?v=20261004-local-search';
+import {heightExtrema,augmentPlaces,TOILET_MODELS,placeId,pickedPlace,ownerQualityText} from './map-data.js';
 import * as THREE from 'three';
 import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js?v=20260929-camera-handoff';
-import {setupRoutes} from './routes.js?v=20261001-relief';
+import {setupRoutes} from './routes.js?v=20261004-connectors';
 import {setupGuide,kindLabel} from './guide.js?v=20260930-place-details';
 import {createCheckpointSite,checkpointTerrain,buildEntranceCheckpoint} from './entrance-checkpoint.js';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
@@ -59,7 +61,7 @@ for(const w of G.water){const P=w.pts;if(w.kind!=='river'||Math.hypot(P[0][0]+12
 // stands in it (modelled further down), the U-shaped house west of it is a public toilet, and a lane runs from the
 // station past the backs of the 化城寺 buildings to 化城路 at the temple's front.
 G.areas.push({kind:'plaza',ring:[[-1338,-60],[-1372,10],[-1398,-1],[-1370,-70]]});
-{const t=G.places.find(p=>p.n==='公共厕所(AH-CIZ-0666)');if(t&&!G.places.some(p=>p.n==='公厕（虎形山车站旁）'))G.places.push({...t,n:'公厕（虎形山车站旁）',shortName:'公厕',x:-1424,z:-17,address:'虎形山车站旁',note:'',quality:'owner_reported',src:'业主指认（2026-10-01）',sourceFamilies:['owner'],rawCoordinate:undefined,coordinateMethod:undefined});}
+augmentPlaces(G);
 // Across the sloping station forecourt the lane is a paving strip laid flat on the ground (drape), not a level bed.
 G.roads.push({id:'lane-hushan-plaza',name:'',kind:'alley',width:1.5,drape:true,pts:[[-1341.3,-48.2],[-1376,0]]});
 G.roads.push({id:'lane-hushan-huacheng',name:'',kind:'alley',width:1.5,pts:[[-1376,0],[-1386,27],[-1385,56],[-1378,64],[-1357,101],[-1350.5,108],[-1350.5,114.5],[-1355.8,120.5],[-1355,126],[-1352,133],[-1349.5,140]]});
@@ -72,7 +74,7 @@ for(let i=0;i<H.length;i++)H[i]=dv.getUint16(i*2,true)/4;
 // measured up from the lowest point, and every building's base is moved by the same rule, so houses ride the taller
 // slopes without being stretched themselves. realH() turns a scene height back into true elevation (altitude readouts,
 // tree and rock bands). The 地形高度 slider rescales from here (world.scale.y = EX/EXAG).
-const EXAG=1.6;let EX=EXAG;const hMin=Math.min(...H);for(let i=0;i<H.length;i++)H[i]=hMin+(H[i]-hMin)*EXAG;
+const EXAG=1.6;let EX=EXAG;const hMin=heightExtrema(H).min;for(let i=0;i<H.length;i++)H[i]=hMin+(H[i]-hMin)*EXAG;
 const realH=h=>hMin+(h-hMin)/EXAG;for(const b of G.buildings)b.base=hMin+(b.base-hMin)*EXAG;
 function rawHeight(x,z){const u=clamp((x+W/2)/W*(N-1),0,N-1.001),v=clamp((z+D/2)/D*(N-1),0,N-1.001),i=u|0,j=v|0,a=u-i,b=v-j;return(H[j*N+i]*(1-a)+H[j*N+i+1]*a)*(1-b)+(H[(j+1)*N+i]*(1-a)+H[(j+1)*N+i+1]*a)*b;}
 const checkpoint=G.places.find(p=>p.model?.kind==='entrance-checkpoint'),checkpointSite=createCheckpointSite(checkpoint,rawHeight);
@@ -215,7 +217,7 @@ for(const a of G.areas)for(const id of a.frame?.replaces||[])replaced.add(G.buil
 const GLAZED=['#D9A93A','#7A2E26','#C0582E'],palaceHalls=G.buildings.filter(b=>b.style==='temple'&&b.area>=240&&(GLAZED.includes(b.roofColor)||b.osmId===609990009));
 for(const b of palaceHalls)replaced.add(b.osmId);
 // Public toilets drawn as themselves (below), by place name → footprint.
-const TOILETS={'公厕（东崖宾馆附近）':609892484,'公厕（虎形山车站旁）':609980796},TOILET_IDS=new Set(Object.values(TOILETS));for(const id of TOILET_IDS)replaced.add(id);
+const TOILETS=TOILET_MODELS,TOILET_IDS=new Set(Object.values(TOILETS));for(const id of TOILET_IDS)replaced.add(id);
 // Street signs carry real names from public listings, matched to the footprint that contains (or is within 8 m of) the pin.
 const SIGN_W=256,SIGN_H=48,SIGN_COLS=8,SIGN_ROWS=lowPower?24:44,signTexts=[];
 const signCanvas=document.createElement('canvas');signCanvas.width=SIGN_W*SIGN_COLS;signCanvas.height=SIGN_H*SIGN_ROWS;const sgc=signCanvas.getContext('2d');
@@ -315,7 +317,7 @@ function roof(parent,cx,y,cz,w,d,rise,material=roofDark,{hip=false,upturn=false}
  line(parent,[R,S],material===gold?'#ba9144':'#5b6459');
  if(upturn){for(const [xx,zz,sx,sz]of[[cx-half,cz-deep,-1,-1],[cx+half,cz-deep,1,-1],[cx-half,cz+deep,-1,1],[cx+half,cz+deep,1,1]])line(parent,[[xx-sx*3,y+.03,zz-sz*1.8],[xx,y+.6,zz],[xx+sx*.65,y+1.05,zz+sz*.5]],'#71694c');}
 }
-function localGroup(x,z,name){const g=new THREE.Group();g.position.set(x,hAt(x,z),z);g.userData.landmark=name;built.add(g);detailedGroups.push(g);return g;}
+function localGroup(x,z,name){const g=new THREE.Group();g.position.set(x,hAt(x,z),z);g.userData.landmark=name;g.userData.placeId=placeId(name);built.add(g);detailedGroups.push(g);return g;}
 // Landmarks rotated onto their mapped footprint: local +z is the facade direction, local x runs across it.
 function footprintFrame(cx,cz,fx,fz){const rot=Math.atan2(fx,fz),c=Math.cos(rot),s=Math.sin(rot);return{rot,wp:(lx,lz)=>[cx+lx*c+lz*s,cz-lx*s+lz*c]};}
 // Axis-aligned block in a group's local frame, added to a Batch with wall-texture UVs.
@@ -974,11 +976,11 @@ for(const TOILET_ID of TOILET_IDS){const b=G.buildings.find(b=>b.osmId===TOILET_
  // little steps to the door line and the 男/女 characters above the doors
  face(signB,len*.27,b.base+2.42,.5,.25,.09,'#ffffff',[[.25,.08],[.375,.08],[.375,.42],[.25,.42]]);face(signB,len*.73,b.base+2.42,.5,.25,.09,'#ffffff',[[.375,.08],[.5,.08],[.5,.42],[.375,.42]]);
  const tile=(()=>{const t=document.createElement('canvas');t.width=t.height=64;const x=t.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,64,64);x.fillStyle='#c9cfd2';x.fillRect(0,0,64,3);x.fillRect(0,0,3,64);const q=new THREE.CanvasTexture(t);q.wrapS=q.wrapT=THREE.RepeatWrapping;q.colorSpace=THREE.SRGBColorSpace;return q;})();
- const g=new THREE.Group();g.userData.landmark='公厕';built.add(g);detailedGroups.push(g);
+ const g=new THREE.Group();g.userData.placeId=placeId(Object.keys(TOILETS).find(n=>TOILETS[n]===TOILET_ID));built.add(g);detailedGroups.push(g);
  wall.mesh(mat('#ffffff',{vertexColors:true,map:tile,side:THREE.DoubleSide}),g);trimB.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),g);flat.mesh(mat('#ffffff',{vertexColors:true,side:THREE.DoubleSide}),g);
  signB.mesh(new THREE.MeshBasicMaterial({map:tex,toneMapped:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2}),g);}}
 // 虎形山车站售票处: a small one-room booth: white walls, a blue fascia reading 售票处, a ticket window and a flat roof.
-{const x=-1372,z=-25,y=hMesh(x,z),g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=Math.atan2(-1362-x,-62-z);g.userData.landmark='虎形山车站售票处';built.add(g);detailedGroups.push(g);
+{const x=-1372,z=-25,y=hMesh(x,z),g=new THREE.Group();g.position.set(x,y,z);g.rotation.y=Math.atan2(-1362-x,-62-z);g.userData.placeId=placeId('虎形山车站');built.add(g);detailedGroups.push(g);
  const W2=3,D2=2.2,H2=3.3,wallM=mat('#f6f4ee'),blue=mat('#2a62c9'),dark=mat('#33424a');
  box(g,0,-.6,0,W2*2+.6,.6,D2*2+.6,mat('#c9c3b3'));box(g,0,0,0,W2*2,H2,D2*2,wallM);box(g,0,H2,0,W2*2+.8,.35,D2*2+.8,mat('#d8dcdc'));
  box(g,0,H2-.9,D2+.03,W2*2+.1,.75,.12,blue);box(g,-.9,.95,D2+.02,1.6,1.15,.08,mat('#7fa4b5'));box(g,-.9,.9,D2+.2,1.9,.08,.4,dark);box(g,1.25,0,D2+.02,1,2.2,.08,dark);
@@ -1211,14 +1213,15 @@ if(renderer.capabilities.isWebGL2||renderer.extensions.has('OES_element_index_ui
 // Parent/world matrices still update, including the height-exaggeration control.
 world.traverse(o=>{if(o.isMesh){o.updateMatrix();o.matrixAutoUpdate=false;}});
 
-const places=G.places.map(p=>({...p}));const byName=new Map(places.map(p=>[p.n,p]));const business=p=>['hotel','food','shop'].includes(p.category);const estimated=p=>p.quality?.startsWith('legacy')||['overture','unverified_listing','derived_area'].includes(p.quality);
+const places=G.places.map(p=>({...p}));const byName=new Map(places.map(p=>[p.n,p])),byId=new Map(places.map(p=>[p.placeId,p]));const business=p=>['hotel','food','shop'].includes(p.category);const estimated=p=>p.quality?.startsWith('legacy')||['overture','unverified_listing','derived_area','owner_reported'].includes(p.quality);
 let selected=null,category='all',search='',frame=0,visibleLabelCount=0,labelCap=null;
 const icon={temple:'寺',hotel:'宿',food:'食',shop:'购',transport:'行',nature:'山',sight:'景',village:'村',service:'公'};
 const GROUPS={temple:['temple'],sight:['sight','nature','village'],service:['service','transport']};
-// Search covers temples, sights, place names and public facilities only (p.searchable, set in corrections.py); other
-// businesses stay on the map but never come up in the directory or a search. The client's guesthouse is pinned first.
+// The empty directory keeps the curated list; a typed query searches all real places, including businesses.
+// One local index built after runtime augmentation is shared by the results and map-label filtering.
+const placeSearch=createPlaceSearch(places);
 const featured=places.find(p=>p.featured);
-const qualityText=p=>p.featured?'业主提供实拍 · 位置按门牌估计':p.qualityLabel||({converted_listing:'携程公开坐标 · 已换算',mapped:'OpenStreetMap 地图记录',multi_source:'多个平台坐标相互印证',platform_listing:'公开平台坐标 · 单一来源',unverified_listing:'单一平台收录 · 位置与营业状态待核',derived_area:'由门牌地址范围推算',overture:'公开地图记录 · 待复核',legacy_osm:'旧版地图点 · 待复核',user_confirmed:'用户实地确认'})[p.quality]||'旧版估计位置 · 待核';
+const qualityText=p=>p.quality==='owner_reported'?ownerQualityText:p.featured?'业主提供实拍 · 位置按门牌估计':p.qualityLabel||({converted_listing:'携程公开坐标 · 已换算',mapped:'OpenStreetMap 地图记录',multi_source:'多个平台坐标相互印证',platform_listing:'公开平台坐标 · 单一来源',unverified_listing:'单一平台收录 · 位置与营业状态待核',derived_area:'由门牌地址范围推算',overture:'公开地图记录 · 待复核',legacy_osm:'旧版地图点 · 待复核',user_confirmed:'用户实地确认'})[p.quality]||'旧版估计位置 · 待核';
 const bGrid=new Map();for(const b of G.buildings){const k=Math.floor(b.center[0]/60)+','+Math.floor(b.center[1]/60);if(!bGrid.has(k))bGrid.set(k,[]);bGrid.get(k).push(b);}
 function closestBuilding(p,max=20){let best=null,dist=max;const gx=Math.floor(p.x/60),gz=Math.floor(p.z/60);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(const b of bGrid.get((gx+i)+','+(gz+j))||[]){const d=Math.hypot(p.x-b.center[0],p.z-b.center[1]);if(d<dist){best=b;dist=d;}}return best;}
 const buildingById=new Map(G.buildings.map(b=>[b.id,b]));
@@ -1231,7 +1234,7 @@ const LABEL_SIZE={featured:[14.85,9.5,48,39],area:[16.5,11.5,4,15],major:[14.04,
 function labelSize(cls,text){const[cjk,other,fixed,height]=LABEL_SIZE[['featured','area','major','small','road'].find(k=>cls.includes(k))||'plain'];let w=fixed;for(const ch of text)w+=ch.codePointAt(0)>=0x2e80?cjk:other;return[Math.ceil(w),height];}
 // Map labels stay out of the Tab order: the map (#stage, role=img) comes first in the page, and the list, search and
 // 居之林 button reach the same places by keyboard. A click or tap still opens them.
-function makeLabel(p,cls,text,onClick){const el=node('div','maplabel pin '+cls);p.stem=cls.includes('featured')?9:cls.includes('area')||cls.includes('road')?0:7;const btn=node('button','');btn.type='button';btn.tabIndex=-1;if(p.featured){const ic=node('span','lb-icon');ic.innerHTML=HOUSE_SVG;btn.append(ic);}btn.append(text);if(onClick)btn.onclick=onClick;el.append(btn,node('i'));const label=new CSS2DObject(el);label.center.set(.5,1);p.label=label;p.el=el;
+function makeLabel(p,cls,text,onClick){const el=node('div','maplabel pin '+cls);if(p.placeId)el.dataset.placeId=p.placeId;p.stem=cls.includes('featured')?9:cls.includes('area')||cls.includes('road')?0:7;const btn=node('button','');btn.type='button';btn.tabIndex=-1;if(p.featured){const ic=node('span','lb-icon');ic.innerHTML=HOUSE_SVG;btn.append(ic);}btn.append(text);if(onClick)btn.onclick=onClick;el.append(btn,node('i'));const label=new CSS2DObject(el);label.center.set(.5,1);p.label=label;p.el=el;
  [p.labelWidth,p.labelHeight]=labelSize(cls,text);return label;}
 // Only temples, sights, place names and public facilities are labelled, plus 居之林; other businesses are not shown.
 for(const p of places){if(!Number.isFinite(p.x)||!Number.isFinite(p.z)||!(p.searchable||p.featured))continue;
@@ -1403,23 +1406,25 @@ function onMapTap(e){
  if(cameraFlight.active||!built.visible)return;
  ndc.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);ray.setFromCamera(ndc,camera);const hit=ray.intersectObjects(pickables,true)[0];
  if(!hit){if(mobile)closeCard();return;}
- let o=hit.object;while(o&&!o.userData.landmark)o=o.parent;
- if(o?.userData.landmark&&byName.has(o.userData.landmark)){selectPlace(byName.get(o.userData.landmark),false);return;}
+ const p=pickedPlace(hit.object,byId,byName);
+ if(p){selectPlace(p,false);return;}
  const i=hit.object.userData.triangleIds?.[hit.faceIndex];if(i>=0)selectBuilding(G.buildings[i]);
 }
 
-function filtered(p,query=search){return(category==='all'||(GROUPS[category]||[category]).includes(p.category))&&(!query||p.searchable&&(p.n+' '+(p.displayName||'')+' '+(p.address||'')+' '+(p.aliases||[]).join(' ')+' '+(p.viewing?.name||'')).includes(query));}
+const categoryMatches=p=>category==='all'||(GROUPS[category]||[category]).includes(p.category);
+function filtered(p,query=search){return categoryMatches(p)&&placeSearch.score(p,query)>=0;}
 // Rows only ease in (.animate) when a tab or category change brings a new list; typing re-lists them in place.
-function renderList(animate){const list=$('#place-list');list.classList.toggle('animate',!!animate);list.replaceChildren();const found=places.filter(p=>p.searchable&&(filtered(p)||p===featured&&category==='all'&&!search)).sort((a,b)=>(b===featured)-(a===featured)||a.p-b.p||a.n.localeCompare(b.n,'zh-CN'));
- $('#list-summary').textContent=`${found.length} 个结果 · 可搜寺庙、景点、村名与公共设施`;
+function renderList(animate){const list=$('#place-list');list.classList.toggle('animate',!!animate);list.replaceChildren();const found=placeSearch.search(search,{accept:p=>categoryMatches(p)&&(normalizeSearch(search)?true:p.searchable||p===featured)});
+ $('#list-summary').textContent=`${found.length} 个结果 · 可搜寺庙、景点、公共设施与商家`;
  const shown=found.slice(0,search?400:220);
- shown.forEach((p,i)=>{const b=node('button','place-item'+(p===featured?' featured':'')+(p===selected?' selected':''));if(animate)b.style.animationDelay=Math.min(i,14)*16+'ms';b.dataset.name=p.n;b.type='button';b.append(node('span','pi-icon c-'+p.category,p===featured?'宿':icon[p.category]||'·'));const t=node('span','pi-text');t.append(node('strong','',p.displayName||(p===featured?p.shortName:p.n)),node('small',estimated(p)?'estimate':'',p===featured?`精选民宿 · ${p.address}`:[CAT[p.category],p.highlight||(p.viewing?`可远眺${p.viewing.name}`:p.zone)].filter(Boolean).join(' · ')+(estimated(p)?' · 位置待核':'')));b.append(t);b.onclick=()=>selectPlace(p,true);list.append(b);});
+ shown.forEach((p,i)=>{const b=node('button','place-item'+(p===featured?' featured':'')+(p===selected?' selected':''));if(animate)b.style.animationDelay=Math.min(i,14)*16+'ms';b.dataset.name=p.n;b.dataset.placeId=p.placeId;b.type='button';b.append(node('span','pi-icon c-'+p.category,p===featured?'宿':icon[p.category]||'·'));const t=node('span','pi-text');t.append(node('strong','',p.displayName||(p===featured?p.shortName:p.n)),node('small',estimated(p)?'estimate':'',p===featured?`精选民宿 · ${p.address}`:[CAT[p.category],p.highlight||(p.viewing?`可远眺${p.viewing.name}`:p.zone)].filter(Boolean).join(' · ')+(estimated(p)?' · 位置待核':'')));b.append(t);b.onclick=()=>selectPlace(p,true);list.append(b);});
  if(found.length>shown.length)list.append(node('p','empty',`另有 ${found.length-shown.length} 个点位未列出，请输入名称、门牌或村名缩小范围。`));
  if(!found.length)list.append(node('p','empty','没有匹配的地点。可以搜寺庙、景点、村名或车站、公厕、停车场，例如“化城寺”“凤凰松”“车站”。'));
 }
-// The search box answers every key at once; the list (up to 400 rows) and the map labels follow ~90 ms after the last one.
-let searchTimer=0;const applySearch=()=>{clearTimeout(searchTimer);search=$('#search').value.trim();labelsDirty=true;};
-$('#search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{applySearch();renderList();},90);};$$('[data-category]').forEach(b=>b.onclick=()=>{applySearch();category=b.dataset.category;$$('[data-category]').forEach(x=>x.classList.toggle('active',x===b));renderList(true);});renderList();
+// Committed text updates both rows and labels; IME preedit stays untouched.
+const searchInput=bindPlaceSearch($('#search'),query=>{search=query;labelsDirty=true;renderList();});
+const applySearch=()=>searchInput.flush();
+$$('[data-category]').forEach(b=>b.onclick=()=>{applySearch();category=b.dataset.category;$$('[data-category]').forEach(x=>x.classList.toggle('active',x===b));renderList(true);});renderList();
 function syncTab(){indicator($('.panel-tabs'),$('.panel-tabs .active'),'--tab-x','--tab-w');}
 // ARIA tabs with a roving tab stop: Tab reaches the selected tab only, the arrow keys (and Home / End) choose another.
 function setTab(tab){const was=$('.panel-tabs .active')?.dataset.tab;$$('.panel-tabs [data-tab]').forEach(b=>{const on=b.dataset.tab===tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;});$('#tab-routes').hidden=tab!=='routes';$('#tab-places').hidden=tab!=='places';$('#tab-guide').hidden=tab!=='guide';if(tab==='places'&&was!=='places')renderList(true);syncTab();}
