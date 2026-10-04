@@ -8,6 +8,7 @@ export function heightExtrema(values) {
   return {min, max};
 }
 export const TOILET_MODELS = {
+  '公厕（三角洲车站停车场旁）': 609946470,
   '公厕（东崖宾馆附近）': 609892484,
   '公厕（虎形山车站旁）': 609980796,
 };
