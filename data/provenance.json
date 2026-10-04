@@ -4,7 +4,7 @@
   "buildings": 1424,
   "roads": 148,
   "water": 18,
-  "places": 1177,
+  "places": 1178,
   "businesses": 815,
   "osmBuildings": 892,
   "supplementaryBuildings": 532,
@@ -26,7 +26,7 @@
   "businessesLinkedToBuildings": 413,
   "namedRoadSegments": 6,
   "userConfirmed": 11,
-  "searchablePlaces": 328
+  "searchablePlaces": 329
  },
  "extent": {
   "origin": {

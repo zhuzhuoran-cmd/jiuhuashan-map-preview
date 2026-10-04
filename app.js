@@ -42,7 +42,7 @@ addEventListener('gesturestart',e=>e.preventDefault());
 function unstall(){const r=$('#reload');if(r.hidden||$('#loading').classList.contains('failed'))return;r.hidden=true;$('#load-text').textContent='读取地形与真实建筑轮廓';}
 try{await init();}catch(e){console.error(e);fatal(/webgl/i.test(e.message)?'这个浏览器无法显示三维地图（WebGL 不可用）。请换用系统浏览器或更新浏览器后重试；在微信里可点右上角“···”，选“在浏览器打开”。':'地图加载失败，请重新加载。'+e.message);}
 async function init(){
-const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20261004-jishi-toilet-name'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
+const [M,G]=window.__JIUHUA_DATA__||await Promise.all(['data/terrain.json','data/geodata.json?v=20261004-details-photos'].map(async u=>{const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}));
 unstall();
 // Lane from 芙蓉路 past the public toilet to 娘娘塔 and the 化城寺 forecourt, a shortcut the user drew on a screenshot
 // (2026-10-01; on no published map). Traced between the mapped footprints, about 1.2 m wide.
