@@ -1,5 +1,5 @@
 import {createPlaceSearch,bindPlaceSearch,normalizeSearch} from './place-search.js?v=20261004-sanjiaozhou';
-import {heightExtrema,augmentPlaces,TOILET_MODELS,placeId,pickedPlace,ownerQualityText} from './map-data.js?v=20261004-jingtuan-toilet';
+import {heightExtrema,augmentPlaces,TOILET_MODELS,placeId,pickedPlace,buildingPlace,pickedBuilding,ownerQualityText} from './map-data.js?v=20261005-place-cards';
 import * as THREE from 'three';
 import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
@@ -885,7 +885,7 @@ let featuredPin=null;
 // a ridge with 鸱吻 at both ends; the biggest halls get a second, lower eave (重檐). Proportions follow the mapped
 // footprint and the documented roof types (旃檀禅林 琉璃瓦重檐歇山, 祇园寺 金黄琉璃瓦), not a survey.
 function templeHall(b,{double=false,roofCol='#f0b52e',wallCol='#f2b33a'}={}){
- const g=localGroup(...b.rectCenter,b.precinct||b.name||'寺院');g.position.y=b.base;g.rotation.y=Math.atan2(-b.axis[1],b.axis[0]);
+ const g=localGroup(...b.rectCenter,b.name||b.precinct||b.templeGuess||'寺院');g.userData.buildingId=b.id;g.position.y=b.base;g.rotation.y=Math.atan2(-b.axis[1],b.axis[0]);
  const c=Math.cos(g.rotation.y),sn=Math.sin(g.rotation.y),wp=(x,z)=>[b.rectCenter[0]+x*c+z*sn,b.rectCenter[1]-x*sn+z*c];
  const W=b.width/2,D=b.depth/2,H=Math.max(b.wallHeight,double?11:7.5),stone=new Batch(),body=new Batch(),rf=new Batch(),trimB=new Batch();
  let low=0;for(const[x,z]of[[-W,-D],[W,-D],[W,D],[-W,D],[0,D],[0,-D]])low=Math.min(low,hAt(...wp(x*1.1,z*1.1))-b.base);
@@ -1224,7 +1224,9 @@ function makeLabel(p,cls,text,onClick){const el=node('div','maplabel pin '+cls);
 // Only temples, sights, place names and public facilities are labelled, plus 居之林; other businesses are not shown.
 for(const p of places){if(!Number.isFinite(p.x)||!Number.isFinite(p.z)||!(p.searchable||p.featured))continue;
  const cls=(p.featured?'featured ':'')+'c-'+p.category+(p.p===1&&!p.featured?' major':'')+(estimated(p)?' estimated':'')+(p.category==='village'?' area':'');
- const label=makeLabel(p,cls,p.displayName||p.shortName||p.n,()=>selectPlace(p,true));
+ // A map label is already in view: open its card immediately. Search results
+ // still fly to their destination before opening; a later drag cannot cancel a label card.
+ const label=makeLabel(p,cls,p.displayName||p.shortName||p.n,()=>selectPlace(p,false));
  // Label tiers. 2 = must show (居之林 and the major sights, p1): never dropped. 1 = temples with a story: placed ahead of
  // the rest, a leader line if need be, and only left out when no spot keeps them readable. 0 = the rest.
  p.tier=p.featured||p.p===1?2:p.category==='temple'&&p.story?1:0;
@@ -1403,7 +1405,7 @@ function selectPlace(p,doFly){noteCardOpener();deselect();selected=p;if(p.el)p.e
  fly(to,flightMs(to),()=>{if(token!==cardToken||selected!==p){syncViewShift();return;}card.classList.add('arrive');build();clearTimeout(card._arrive);card._arrive=setTimeout(()=>card.classList.remove('arrive'),1600);},150);
 }
 // Only temple halls open a card; houses and shops are scenery, so tapping one acts like tapping the ground (the owner, 2026-10-04).
-function selectBuilding(b){noteCardOpener();routes?.stopPreview();cameraFlight.cancel();cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint';
+function selectBuilding(b){const place=buildingPlace(b,byName);if(place){selectPlace(place,false);return;}noteCardOpener();routes?.stopPreview();cameraFlight.cancel();cardToken++;deselect();const ml=b.positionQuality==='ml_roofprint';
  const card=cardBase(b.name||b.precinct||b.templeGuess||'寺院建筑','寺院建筑',{cat:'temple',sub:b.precinct?`${b.precinct} 寺院范围内`:''});
  const chips=node('div','chips');chips.append(node('span','',`占地约 ${Math.round(b.area)} m²`),node('span','',`${b.levels||'-'} 层`),node('span','',`墙高 ${b.wallHeight.toFixed(1)} m`));card.append(chips);
  const d=more('外观与数据依据');d.append(node('p','',ml?'平面轮廓来自影像识别，可能包含识别误差。':'平面形状与朝向来自地图记录。'));
@@ -1416,7 +1418,7 @@ function onMapTap(e){
  ndc.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);ray.setFromCamera(ndc,camera);const hit=ray.intersectObjects(pickables,true)[0];
  const p=hit&&pickedPlace(hit.object,byId,byName);
  if(p){selectPlace(p,false);return;}
- const b=hit&&G.buildings[hit.object.userData.triangleIds?.[hit.faceIndex]];
+ const b=hit&&pickedBuilding(hit.object,hit.faceIndex,G.buildings,buildingById);
  if(b?.style==='temple')selectBuilding(b);else if(mobile)closeCard();
 }
 

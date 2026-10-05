@@ -57,7 +57,9 @@ export function createMapControls(camera, surface, onMapTap) {
     // OrbitControls captures the pointer on the shared surface. Remember the
     // original label so a short tap still opens it after pointerup is retargeted.
     if (label) {
-      if (label.isConnected) label.click();
+      // Label culling can detach a pill between down and up as inertia settles.
+      // The valid tap still belongs to the place pressed at pointerdown.
+      label.click();
     } else {
       onMapTap(event);
     }

@@ -44,3 +44,19 @@ export function pickedPlace(object, byId, byName) {
     if (o.userData?.landmark && byName.has(o.userData.landmark)) return byName.get(o.userData.landmark);
   }
 }
+// Use the same place card for an individual hall and its label. A named hall
+// (e.g. 五百罗汉堂) takes precedence over the surrounding temple precinct.
+export function buildingPlace(building, byName) {
+  if (building?.style !== 'temple') return undefined;
+  for (const name of [building.name, building.precinct, building.templeGuess]) {
+    const place = byName.get(name);
+    if (place?.category === 'temple') return place;
+  }
+}
+export function pickedBuilding(object, faceIndex, buildings, byId) {
+  for (let o = object; o; o = o.parent) {
+    if (o.userData?.buildingId) return byId.get(o.userData.buildingId);
+    const index = o.userData?.triangleIds?.[faceIndex];
+    if (index !== undefined) return buildings[index];
+  }
+}
