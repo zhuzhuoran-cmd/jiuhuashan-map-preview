@@ -414,6 +414,7 @@ class OrbitControls extends EventDispatcher {
 
 			scope.domElement.removeEventListener( 'pointerdown', onPointerDown );
 			scope.domElement.removeEventListener( 'pointercancel', onPointerUp );
+			scope.domElement.removeEventListener( 'lostpointercapture', onPointerUp );
 			scope.domElement.removeEventListener( 'wheel', onMouseWheel );
 
 			scope.domElement.removeEventListener( 'pointermove', onPointerMove );
@@ -494,7 +495,7 @@ class OrbitControls extends EventDispatcher {
 
 		function getZoomScale( delta ) {
 
-			const normalized_delta = Math.abs( delta ) / ( 100 * ( window.devicePixelRatio | 0 ) );
+			const normalized_delta = Math.abs( delta ) / ( 100 * Math.max( 1, window.devicePixelRatio || 1 ) );
 			return Math.pow( 0.95, scope.zoomSpeed * normalized_delta );
 
 		}
@@ -663,7 +664,7 @@ class OrbitControls extends EventDispatcher {
 
 		function handleMouseDownDolly( event ) {
 
-			updateZoomParameters( event.clientX, event.clientX );
+			updateZoomParameters( event.clientX, event.clientY );
 			dollyStart.set( event.clientX, event.clientY );
 
 		}
@@ -958,6 +959,12 @@ class OrbitControls extends EventDispatcher {
 
 			dollyEnd.set( 0, distance );
 
+			// Coincident/crossing fingers must not divide by zero or jump scale.
+			if ( distance < 1 || dollyStart.y < 1 ) {
+				dollyStart.copy( dollyEnd );
+				return;
+			}
+
 			dollyDelta.set( 0, Math.pow( dollyEnd.y / dollyStart.y, scope.zoomSpeed ) );
 
 			dollyOut( dollyDelta.y );
@@ -1038,11 +1045,15 @@ class OrbitControls extends EventDispatcher {
 
 		function onPointerUp( event ) {
 
+			// Releasing capture may emit a second event for the same pointer.
+			if ( ! pointers.includes( event.pointerId ) ) return;
 			removePointer( event );
 
 			if ( pointers.length === 0 ) {
 
-				scope.domElement.releasePointerCapture( event.pointerId );
+				if ( ! scope.domElement.hasPointerCapture || scope.domElement.hasPointerCapture( event.pointerId ) ) {
+					scope.domElement.releasePointerCapture( event.pointerId );
+				}
 
 				scope.domElement.removeEventListener( 'pointermove', onPointerMove );
 				scope.domElement.removeEventListener( 'pointerup', onPointerUp );
@@ -1052,6 +1063,10 @@ class OrbitControls extends EventDispatcher {
 			scope.dispatchEvent( _endEvent );
 
 			state = STATE.NONE;
+			// Rebase the remaining touch(es): 2 -> 1 must keep responding instead
+			// of requiring every finger to be lifted before the next gesture.
+			const remaining = pointerPositions[ pointers[ 0 ] ];
+			if ( remaining ) onTouchStart( { pointerId: pointers[ 0 ], pageX: remaining.x, pageY: remaining.y } );
 
 		}
 
@@ -1404,6 +1419,7 @@ class OrbitControls extends EventDispatcher {
 
 		scope.domElement.addEventListener( 'pointerdown', onPointerDown );
 		scope.domElement.addEventListener( 'pointercancel', onPointerUp );
+		scope.domElement.addEventListener( 'lostpointercapture', onPointerUp );
 		scope.domElement.addEventListener( 'wheel', onMouseWheel, { passive: false } );
 
 		// force an update at start

@@ -4,6 +4,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 // gesture can start on either one, including two fingers on different layers.
 export function createMapControls(camera, surface, onMapTap) {
   const controls = new OrbitControls(camera, surface);
+  const updateOrbit = controls.update.bind(controls);
   const pointers = new Set();
   let down = null;
   const beginGesture = () => {
@@ -15,9 +16,9 @@ export function createMapControls(camera, surface, onMapTap) {
   // OrbitControls exposes no velocity reset; drain it while preserving the pose.
   controls.stopMotion = () => {
     const position = camera.position.clone(), target = controls.target.clone(), damping = controls.enableDamping;
-    controls.enableDamping = false; controls.update();
+    controls.enableDamping = false; updateOrbit();
     camera.position.copy(position); controls.target.copy(target);
-    controls.enableDamping = damping; controls.update();
+    controls.enableDamping = damping; updateOrbit();
   };
 
   surface.addEventListener('pointerdown', event => {
@@ -67,7 +68,7 @@ export function createMapControls(camera, surface, onMapTap) {
   };
   surface.addEventListener('pointercancel', cancel);
   surface.addEventListener('lostpointercapture', cancel);
-  surface.addEventListener('wheel', beginGesture, {passive: true});
+  surface.addEventListener('wheel', beginGesture, {passive: true, capture: true});
   surface.addEventListener('click', event => {
     // Pointer taps are handled above; suppress the browser's follow-up click,
     // including clicks after a drag. Keyboard and accessibility clicks still work.

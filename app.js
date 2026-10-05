@@ -3,6 +3,7 @@ import {heightExtrema,augmentPlaces,TOILET_MODELS,placeId,pickedPlace,ownerQuali
 import * as THREE from 'three';
 import {createMapControls} from './map-input.js?v=20260929-camera-handoff';
 import {createCameraFlight} from './camera-flight.js?v=20260929-camera-handoff';
+import {createTerrainNavigation} from './map-navigation.js';
 import {CSS2DRenderer,CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
 import {setupInteractionGuide} from './interaction-guide.js?v=20260929-camera-handoff';
 import {setupRoutes} from './routes.js?v=20261004-connectors';
@@ -98,7 +99,7 @@ const scene=new THREE.Scene();scene.fog=new THREE.FogExp2('#f4dcc0',.0002);
 const syncMist=()=>{scene.fog.density=.13/clamp(camera.position.distanceTo(controls.target),600,20000);};
 const world=new THREE.Group(),built=new THREE.Group(),forest=new THREE.Group(),trailGroup=new THREE.Group(),decor=new THREE.Group();scene.add(world);world.add(built,forest,trailGroup,decor);
 const camera=new THREE.PerspectiveCamera(43,1,.7,32000);const controls=createMapControls(camera,$('#stage'),onMapTap);
-controls.enableDamping=true;controls.dampingFactor=.075;controls.minDistance=10;controls.maxDistance=12500;controls.maxPolarAngle=Math.PI*.482;controls.zoomToCursor=true;controls.screenSpacePanning=false;
+controls.enableDamping=true;controls.dampingFactor=.075;
 scene.add(new THREE.HemisphereLight('#fff6e8','#7a8a70',1.1));const sun=new THREE.DirectionalLight('#fff0d6',2.6);sun.position.set(-2600,1900,-1500);sun.castShadow=shadows();sun.shadow.mapSize.set(4096,4096);Object.assign(sun.shadow.camera,{left:-850,right:850,top:850,bottom:-850,near:10,far:6500});sun.shadow.bias=-.0001;sun.shadow.normalBias=.7;scene.add(sun,sun.target);
 const color=c=>new THREE.Color(c);
 // Phones and tablets shade with Lambert (diffuse only): the scene is matte almost everywhere, so it looks nearly the same at
@@ -1253,6 +1254,7 @@ const labelPlaces=places.concat(extraLabels).filter(p=>p.label);
 function pose(x,z,dist=900,az=145,pol=57){const target=new THREE.Vector3(x,hAt(x,z)*world.scale.y,z);const a=az*Math.PI/180,p=pol*Math.PI/180;return{target,pos:target.clone().add(new THREE.Vector3(-Math.sin(a)*dist*Math.sin(p),dist*Math.cos(p),Math.cos(a)*dist*Math.sin(p)))};}
 let routes=null,started=false;const frameHooks=[]; // routes: set up after the panel; frameHooks run each frame before the controls
 const cameraFlight=createCameraFlight(camera,controls,{reducedMotion:reduce});
+const navigation=createTerrainNavigation(camera,controls,{width:W,depth:D,cellSize:Math.min(W,D)/(N-1),heightAt:(x,z)=>hAt(x,z)*world.scale.y,isCut:inTerrainCut,automatic:()=>cameraFlight.active||!!routes?.previewing});
 // One persistent CSS2D anchor, outside the place/search/route label filters.
 const locationElement=node('div','my-location');locationElement.append(node('span','','我的位置'),node('i'));
 const locationLabel=new CSS2DObject(locationElement);locationLabel.center.set(.5,1);locationLabel.renderOrder=10;locationLabel.visible=false;scene.add(locationLabel);
@@ -1304,13 +1306,17 @@ function indicator(bar,a,px,pw){const n=bar.getBoundingClientRect(),r=a.getBound
 function syncSeg(){const nav=$('.viewbar'),a=nav.querySelector('button.active');if(!a){nav.style.setProperty('--ind-o',0);return;}indicator(nav,a,'--ind-x','--ind-w');nav.style.setProperty('--ind-o',1);}
 function clearViews(){$$('[data-view]').forEach(b=>b.classList.remove('active'));syncSeg();}
 const townPose=()=>pose(-1390,50,mobile?1550:1370,38,53);
-function view(name){homePose=null;const poses={town:townPose,all:()=>pose(-150,200,7800,110,51),top:()=>pose(controls.target.x,controls.target.z,Math.max(900,camera.position.distanceTo(controls.target)),0,1),baisui:()=>{const b=G.buildings.find(b=>b.osmId===541482372);return pose(...b.center,260,60,63);},juzhilin:()=>featuredPose(),tiantai:()=>pose(773,1635,520,130,64)};fly(poses[name]());$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));syncSeg();}
+// Repeated buttons accumulate against the pending destination, not a partly
+// completed frame. Toolbar navigation takes ownership just like a real gesture.
+function navigationPose(options){const base=cameraFlight.destination?.orbit?cameraFlight.destination:null;controls.dispatchEvent({type:'gesturestart'});return navigation.pose({...options,base});}
+function view(name){homePose=null;const poses={town:townPose,all:()=>pose(-150,200,7800,110,51),top:()=>navigationPose({heading:0,polar:Math.PI/180}),baisui:()=>{const b=G.buildings.find(b=>b.osmId===541482372);return pose(...b.center,260,60,63);},juzhilin:()=>featuredPose(),tiantai:()=>pose(773,1635,520,130,64)};fly(poses[name]());$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));syncSeg();}
 // A card flight the visitor takes over mid-air leaves no card: its selection and the view it would return to go too.
 $$('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));controls.addEventListener('gesturestart',()=>{const cardFlight=!!cameraFlight.destination?.onDone;cameraFlight.cancel();clearViews();if(cardFlight&&!$('#card').classList.contains('show')){cardToken++;deselect();homePose=null;}syncViewShift();});
+controls.addEventListener('gesturestart',()=>navigation.constrain());
 fly(townPose(),0);
-$('#north').onclick=()=>fly(pose(controls.target.x,controls.target.z,camera.position.distanceTo(controls.target),0,controls.getPolarAngle()*180/Math.PI));
-$('#zoom-in').onclick=()=>fly(pose(controls.target.x,controls.target.z,Math.max(40,camera.position.distanceTo(controls.target)*.65),heading(),controls.getPolarAngle()*180/Math.PI),450);
-$('#zoom-out').onclick=()=>fly(pose(controls.target.x,controls.target.z,Math.min(12000,camera.position.distanceTo(controls.target)*1.5),heading(),controls.getPolarAngle()*180/Math.PI),450);
+$('#north').onclick=()=>fly(navigationPose({heading:0}),650);
+$('#zoom-in').onclick=()=>fly(navigationPose({scale:.65}),450);
+$('#zoom-out').onclick=()=>fly(navigationPose({scale:1/.65}),450);
 function sourceLinks(p){const links=node('div','links');for(const s of p.sources||[]){if(!/^https:\/\//.test(s.url))continue;const a=node('a','',s.name);a.href=s.url;a.target='_blank';a.rel='noopener';links.append(a);}return links;}
 function deselect(){if(selected?.el)selected.el.classList.remove('selected');selected=null;for(const b of $$('.place-item.selected'))b.classList.remove('selected');}
 let cardToken=0; // bumps whenever the card is closed or replaced, cancelling a card still waiting for its camera flight
@@ -1488,7 +1494,7 @@ $('#route-hud .rh-close').onclick=()=>{const had=$('#route-hud').contains(docume
 // Phone sheets drag (sheet-drag.js); each change of their size re-centres the map.
 setupSheetDrag({compact:compactViewport,closePanel:()=>panelFocusBack(hidePanel())});addEventListener('sheetchange',()=>syncViewShift());
 $('#layer-buildings').onchange=e=>built.visible=e.target.checked;$('#layer-trees').onchange=e=>{treesChoice=e.target.checked;applyTrees();};$('#layer-trails').onchange=e=>trailGroup.visible=e.target.checked;
-$('#height').oninput=e=>{const old=world.scale.y;EX=+e.target.value;const sc=EX/EXAG;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=sc;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`地形增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(sc-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(sc-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*sc;for(const q of extraLabels)q.label.position.y=(q.top+4)*sc;};
+$('#height').oninput=e=>{controls.dispatchEvent({type:'gesturestart'});const old=world.scale.y;EX=+e.target.value;const sc=EX/EXAG;e.target.style.setProperty('--fill',(EX-1)/.8*100+'%');world.scale.y=sc;$('#height-value').textContent=EX===1?'真实比例 ×1.0':`地形增强 ×${EX.toFixed(1)}`;const dy=hAt(controls.target.x,controls.target.z)*(sc-old);controls.target.y+=dy;camera.position.y+=dy;if(homePose){const hy=hAt(homePose.target.x,homePose.target.z)*(sc-old);homePose.target.y+=hy;homePose.pos.y+=hy;}for(const p of places)if(p.label)p.label.position.y=(p.top+5)*sc;for(const q of extraLabels)q.label.position.y=(q.top+4)*sc;};
 $('#data-content').innerHTML=dataNotesHtml({W,D,stats:G.stats,transit:G.transit,places});let dataOpener=null;$('#credit-data').onclick=$('#credit-mobile').onclick=e=>{dataOpener=e.currentTarget;closeMobileSheets('data');$('#data-dialog').showModal();syncViewShift();};$('#data-close').onclick=closeDialog;$('#data-dialog').onclick=e=>{if(e.target===$('#data-dialog'))closeDialog();};
 // The browser hands focus back to the credits button as the dialog closes, but on a phone the credits row is still
 // hidden at that moment (the open dialog hides the map chrome), so focus falls to the page; once the row is back, it goes there.
@@ -1691,7 +1697,7 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  const dt=lastFrame?now-lastFrame:16.7;lastFrame=now;
  for(const f of frameHooks)f(now,dt);
  cameraFlight.update(now);
- controls.target.x=clamp(controls.target.x,-W/2,W/2);controls.target.z=clamp(controls.target.z,-D/2,D/2);const moved=controls.update();if(Math.abs(camera.position.x)<W/2&&Math.abs(camera.position.z)<D/2&&!inTerrainCut(camera.position.x,camera.position.z))camera.position.y=Math.max(camera.position.y,hAt(camera.position.x,camera.position.z)*world.scale.y+8);
+ const moved=controls.update();
  const shifting=shift.x!==shiftTarget.x||shift.y!==shiftTarget.y;
  if(shifting){const k=reduce?1:1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
  const idle=lowPower&&!benchUntil&&!cameraFlight.active&&!moved&&!shifting&&!routes?.previewing&&now-lastInput>1500;
