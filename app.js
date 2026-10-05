@@ -15,6 +15,7 @@ import {$,$$,store,clamp,rng,node,reveal,conceal,toast} from './dom.js';
 import {createPhotoViewer,photoCredit} from './photo-viewer.js';
 import {dataNotesHtml} from './data-notes.js';
 import {exportMapImage} from './map-export.js';
+import {createLocationTracker} from './geolocation.js';
 
 const interactionGuide=setupInteractionGuide();
 
@@ -1252,7 +1253,40 @@ const labelPlaces=places.concat(extraLabels).filter(p=>p.label);
 function pose(x,z,dist=900,az=145,pol=57){const target=new THREE.Vector3(x,hAt(x,z)*world.scale.y,z);const a=az*Math.PI/180,p=pol*Math.PI/180;return{target,pos:target.clone().add(new THREE.Vector3(-Math.sin(a)*dist*Math.sin(p),dist*Math.cos(p),Math.cos(a)*dist*Math.sin(p)))};}
 let routes=null,started=false;const frameHooks=[]; // routes: set up after the panel; frameHooks run each frame before the controls
 const cameraFlight=createCameraFlight(camera,controls,{reducedMotion:reduce});
-function fly(to,ms=1200,onDone=null,arrivalDelay=0){routes?.stopPreview();cameraFlight.move(to,ms,onDone,arrivalDelay);if(started)syncViewShift();}
+// One persistent CSS2D anchor, outside the place/search/route label filters.
+const locationElement=node('div','my-location');locationElement.append(node('span','','我的位置'),node('i'));
+const locationLabel=new CSS2DObject(locationElement);locationLabel.center.set(.5,1);locationLabel.renderOrder=10;locationLabel.visible=false;scene.add(locationLabel);
+const locationButton=$('#locate'),locationStatus=$('#location-status');
+let locationPoint=null,locationDirty=false,locationFocusAt=null,locationAnnouncement='';
+const locationNotices=new Set();
+const locationMessages={off:'定位已关闭',waiting:'正在获取位置，点击定位按钮可关闭',inside:'定位已开启',outside:'您已超出地图覆盖范围，返回范围后会自动显示',inaccurate:'定位精度不足，请移至开阔处',approximate:'位置精度较低，请检查系统“精确位置”设置或移至开阔处',stale:'暂未收到新位置，正在等待更新',timeout:'定位暂时超时，正在尝试更新；可检查系统定位服务',unavailable:'暂时无法定位，请检查系统定位服务；微信中可尝试在系统浏览器打开',denied:'未获得定位权限，请在系统和浏览器设置中允许定位后重试',insecure:'定位需要 HTTPS，请打开线上安全网址',unsupported:'当前浏览器不支持定位，请尝试系统浏览器',paused:'定位已暂停，返回页面后继续'};
+const locationTracker=createLocationTracker({geo:G.geo,terrain:M,onChange:({state,point,enabled,changed,fresh})=>{
+ locationPoint=point;locationLabel.visible=!!point;locationDirty=true;
+ locationElement.classList.toggle('is-stale',!!point&&!fresh);
+ locationElement.firstChild.textContent=fresh?'我的位置':'上次位置';
+ locationButton.setAttribute('aria-pressed',String(enabled));locationButton.setAttribute('aria-label',enabled?'关闭我的位置':'显示我的位置');
+ locationButton.setAttribute('aria-busy',String(state==='waiting'));locationButton.dataset.state=state;
+ // Announce state/presence changes, not every metre of accuracy jitter.
+ const announcement=[state,enabled,!!point,fresh].join(':');
+ if(announcement!==locationAnnouncement){
+  const accuracy=point?Math.ceil(point.accuracy/10)*10:0;
+  locationStatus.textContent=point?(fresh?`我的位置 · 精度约 ${accuracy} 米（仅供参考）`:`${locationMessages[state]}；显示上次位置，非实时定位`):locationMessages[state];
+  locationAnnouncement=announcement;
+ }
+ if(!enabled||['paused','outside','stale'].includes(state))locationFocusAt=null;
+ if(changed&&!['inside','paused','waiting','off'].includes(state)&&!locationNotices.has(state)){locationNotices.add(state);toast(locationMessages[state]);}
+ if(point&&fresh&&locationFocusAt!==null){
+  const focus=performance.now()-locationFocusAt<20000&&!routes?.previewing&&!cameraFlight.active;
+  locationFocusAt=null;if(focus)fly(pose(point.x,point.z,650),1000);
+ }
+}});
+locationButton.onclick=()=>{
+ if(locationTracker.enabled)locationTracker.stop();
+ else{locationNotices.clear();locationFocusAt=performance.now();locationTracker.start();}
+};
+controls.addEventListener('gesturestart',()=>{locationFocusAt=null;});
+function syncLocation(){if(locationPoint){const {x,z}=locationPoint;locationLabel.position.set(x,hAt(x,z)*world.scale.y+8,z);locationLabel.updateMatrixWorld(true);}}
+function fly(to,ms=1200,onDone=null,arrivalDelay=0){locationFocusAt=null;routes?.stopPreview();cameraFlight.move(to,ms,onDone,arrivalDelay);if(started)syncViewShift();}
 // Longer hops take a little longer so the move never feels rushed.
 const flightMs=to=>clamp(900+camera.position.distanceTo(to.pos)*.35,1100,2400);
 // The view from before a card first moved the camera (the destination if a flight is under way); closing the card eases back to it.
@@ -1443,7 +1477,7 @@ function routeCovers(){const out=[];for(const el of $$(ROUTE_COVERS)){if(!el.off
 // Leaving or starting over a route stops the camera where it is, but a card's flight is left to land: the card has its own
 // bookkeeping, and a preview that starts closes it anyway (closeSheetsForRoute).
 routes=setupRoutes({routes:G.routes||[],scene,world,camera,controls,hAt,realH,fly,pose,openPanel,isMobile:()=>mobile,visibleRect,covers:routeCovers,onFrame:f=>frameHooks.push(f),cancelFlight:()=>{if(!cameraFlight.destination?.onDone)cameraFlight.cancel();},
- onPlaybackChange:()=>{if(started)syncViewShift();syncRouteTeaser();},
+ onPlaybackChange:()=>{locationFocusAt=null;if(started)syncViewShift();syncRouteTeaser();},
  // a preview started from the sheet or card puts them away; keyboard focus moves on to the route bar's play button
  closeSheetsForRoute:()=>{const a=document.activeElement,had=mobile&&!$('#panel').classList.contains('closed')&&$('#panel').contains(a)||$('#card').classList.contains('show')&&$('#card').contains(a);closeCard(false);if(mobile)$('#panel').classList.add('closed');resize();if(had)focusOn($('#route-hud .rh-play'));}});
 // Leaving a route from its bar also leaves its close-up: back to 九华街, as the panel's × does. A card open beside the bar
@@ -1611,14 +1645,19 @@ function updateLabels(exportCovers,moving=false){labelSelections++;let again=fal
 
 
 // CSS2D stacks labels by distance alone; a route stop showing its name is lifted over the dots and stems around it.
-function renderLabelLayer(){labelRoot.children=attachedLabels.filter(o=>o.parent).concat(routes?.labelObjects||[]);labels.render(labelRoot,camera);for(const o of routes?.labelObjects||[])if(o.element.classList.contains('named'))o.element.style.zIndex=1000+(+o.element.style.zIndex||0);labelPasses++;}
+function renderLabelLayer(){
+ syncLocation();labelRoot.children=attachedLabels.filter(o=>o.parent).concat(routes?.labelObjects||[],locationLabel);labels.render(labelRoot,camera);
+ let locationZ=+locationElement.style.zIndex||0;
+ for(const o of routes?.labelObjects||[])if(o.element.classList.contains('named')){const z=1000+(+o.element.style.zIndex||0);o.element.style.zIndex=z;locationZ=Math.max(locationZ,z+1);}
+ locationElement.style.zIndex=locationZ;labelPasses++;
+}
 // Idle phones retain low-rate decorative animation. Skip that animation's CPU work
 // as well as the GPU draw on unused frames; gestures, damping and route previews
 // still run at full rate. Idle resolution restores clarity without lowering models.
 let lastFrame=0,lastRender=0,lastInput=0,renderedLast=false,benchUntil=0,benchPhase=0,benchFrom=0,samples=[],frameAvg=16.7,frameN=0,watchAt=0,tierProbeAllowed=true;
 let selectionPending=true,selectionAt=0,hudAt=0,animationUpdates=0;
 const labelCamera=new THREE.Matrix4(),labelProjection=new THREE.Matrix4();const labelPassPos=new THREE.Vector3(),labelPassQuat=new THREE.Quaternion();
-for(const ev of['pointerdown','pointermove','wheel','keydown','input','change','click'])addEventListener(ev,()=>{lastInput=performance.now();if(['keydown','input','change','click'].includes(ev))labelsDirty=true;},{capture:true,passive:true});
+for(const ev of['pointerdown','pointermove','wheel','keydown','input','change','click'])addEventListener(ev,e=>{lastInput=performance.now();if(ev!=='pointermove'&&!locationButton.contains(e.target))locationFocusAt=null;if(['keydown','input','change','click'].includes(ev))labelsDirty=true;},{capture:true,passive:true});
 function startBench(phase){benchPhase=phase;benchUntil=performance.now()+3000;samples=[];}
 function setTier(t,why){t=Math.max(0,Math.min(maxTier,t));const was=tier,wasE=emergency;tier=t;emergency=why==='emergency';if(t!==was||emergency!==wasE)applyTier();}
 function applyBudget(result,now){
@@ -1647,7 +1686,7 @@ function measure(dt,now){
  samples.push(Math.min(dt,250));if(samples.length>240)samples.shift();
  if(now>watchAt&&frameN>45){const result=resolution.observe(samples,now);applyBudget(result,now);frameN=0;samples=[];watchAt=now+3000;}
 }
-document.addEventListener('visibilitychange',()=>{lastFrame=0;renderedLast=false;samples=[];frameN=0;labelsDirty=true;if(!document.hidden&&benchUntil)startBench(benchPhase);});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)locationFocusAt=null;lastFrame=0;renderedLast=false;samples=[];frameN=0;labelsDirty=true;if(!document.hidden&&benchUntil)startBench(benchPhase);});
 function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;return;}
  const dt=lastFrame?now-lastFrame:16.7;lastFrame=now;
  for(const f of frameHooks)f(now,dt);
@@ -1656,7 +1695,7 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
  const shifting=shift.x!==shiftTarget.x||shift.y!==shiftTarget.y;
  if(shifting){const k=reduce?1:1-Math.pow(.86,dt/16.7);for(const a of['x','y']){shift[a]+=(shiftTarget[a]-shift[a])*k;if(Math.abs(shift[a]-shiftTarget[a])<.4)shift[a]=shiftTarget[a];}applyViewShift();}
  const idle=lowPower&&!benchUntil&&!cameraFlight.active&&!moved&&!shifting&&!routes?.previewing&&now-lastInput>1500;
- if(idle&&!labelsDirty&&now-lastRender<(now-lastInput>8000?98:48)){renderedLast=false;return;}
+ if(idle&&!labelsDirty&&!locationDirty&&now-lastRender<(now-lastInput>8000?98:48)){renderedLast=false;return;}
  if(renderedLast&&!idle)measure(dt,now);else if(!benchUntil){samples=[];frameN=0;}renderedLast=true;lastRender=now;syncResolution(idle,now);
  animationUpdates++;
  for(const m of movers){const t=reduce?m.phase:m.kind==='funicular'?(Math.sin(now/16000)*.5+.5)*.96+.02:((now/140000)+m.phase)%1;const p=m.curve.getPoint(t);m.g.position.copy(p);if(m.kind==='cable')m.g.position.y-=5.5;const tangent=m.curve.getTangent(t);m.g.rotation.y=Math.atan2(-tangent.z,tangent.x);}
@@ -1674,7 +1713,7 @@ function tick(now){requestAnimationFrame(tick);if(document.hidden){lastFrame=0;r
   labelPassPos.copy(camera.position);labelPassQuat.copy(camera.quaternion);selectionPending=updateLabels(null,moved)||moved;selectionAt=now;}
  if(selectedLabels||cameraChanged&&now-hudAt>=110){hudAt=now;const ct=controls.target;sun.target.position.copy(ct);sun.position.set(ct.x-1200,ct.y+2100,ct.z-1300);$('#north-arrow').style.transform=`rotate(${-heading()}deg)`;$('#scene-status').textContent=distance<350?'建筑近景 · 细部复原':distance<2100?'九华山街区 · 拖动环看':(fineMouse.matches?'九华山全景 · 滚轮缩放':'九华山全景 · 双指缩放');const v=distance*2*Math.tan(43*Math.PI/360)/innerHeight*80;$('#scale-line').textContent=v>1000?`${(v/1000).toFixed(1)} km`:`${Math.round(v/10)*10||5} m`;}
  syncMist();renderer.render(scene,camera);const routeLabelsChanged=routes?.updateLabels(now);
- if(cameraChanged||selectedLabels||routeLabelsChanged)renderLabelLayer();labelsDirty=false;
+ if(cameraChanged||selectedLabels||routeLabelsChanged||locationDirty)renderLabelLayer();labelsDirty=locationDirty=false;
  labelCamera.copy(camera.matrixWorld);labelProjection.copy(camera.projectionMatrix);
  if(++frame===30)console.info('Map verification',JSON.stringify(window.mapDiagnostics));
 }
