@@ -5,7 +5,7 @@ return `<p>本次更新：2026 年 9 月 28 日。覆盖约 ${(W/1000).toFixed(2
 <table><tr><th>内容</th><th>依据与精度</th></tr>
 <tr><td>居之林民宿</td><td>按业主提供的实拍照片与航拍图手工建模；现有卫星影像早于新建，落位按门牌顺序估计，尺寸按照片比例估计。</td></tr>
 <tr><td>${S.buildings} 个建筑轮廓</td><td>${S.osmBuildings} 个 OpenStreetMap 轮廓 + ${S.supplementaryBuildings} 个 Overture 影像识别补充轮廓。楼层、墙色、瓦色、马头墙、披檐、店面按片区规律分配（${S.levelsRankedByGlobfp||0} 栋的楼层高低顺序参考 3D-GloBFP 估算高度），规律来自规划文件与公开照片，逐栋未实测。点建筑可看依据。</td></tr>
-<tr><td>地点标注</td><td>寺庙 ${S.temples} · 景点山水与村落 ${sightCount} · 公共设施 ${pubCount}（车站、索道、停车场、公厕、游客中心、派出所、医院等）；另有 ${S.halls} 处殿堂小标注。多个平台的同一地点已合并。除居之林外，地图不标注商家。</td></tr>
+<tr><td>地点标注</td><td>寺庙 ${S.temples} · 景点山水与村落 ${sightCount} · 公共设施 ${pubCount}（车站、索道、停车场、公厕、游客中心、派出所、医院等）；另有 ${S.halls} 处殿堂小标注。多个平台的同一地点已合并。除居之林外，其他商家点位已从地图数据与搜索中移除。</td></tr>
 <tr><td>真实地形</td><td>Copernicus GLO-30（2011–2015 雷达测量），257×257 网格约 21 m 间距；与 SRTM 相比峰顶和索道高差更接近官方数据。局部与其他高程源相差 30 m 以上的格点取四源中位数。仍是表面模型（含树冠）。</td></tr>
 <tr><td>主要寺院</td><td>化城寺、祇园寺、肉身宝殿、百岁宫、旃檀禅林等的墙色、瓦色、屋顶形式依据官方规划、公开照片与卫星影像；殿体比例、细部仍属复原。</td></tr></table>
 <h3>景区交通（官网 ${transit?.retrieved||''}）</h3>${(transit?.routes||[]).map(r=>`<p><b>${r.name}</b>　${r.hours}<br><small>${r.stops.join(' → ')}${r.note?'。'+r.note:''}</small></p>`).join('')}<p>${(transit?.cableways||[]).map(c=>`${c.name} ${c.hours}`).join('　·　')}<br><small>旅游咨询 ${transit?.hotlines?.['旅游咨询投诉']||''} · 紧急救援 ${transit?.hotlines?.['紧急救援']||''} · 尚无公开坐标的站点：${(transit?.unlocatedStops||[]).join('、')}</small></p>

@@ -86,7 +86,7 @@ canvas{display:block}
 /* category tints: --c for dots, --c-ink for text on --c-soft tiles (≥4.8:1), --c-soft for tiles (solid colours, no color-mix needed) */
 .c-temple{--c:var(--c-temple);--c-ink:#87502a;--c-soft:#f4e9de}
 .c-sight,.c-nature{--c:var(--c-sight);--c-ink:#33704d;--c-soft:#e5f0e9}
-.c-village,.c-hotel,.c-food,.c-shop{--c:var(--c-village);--c-ink:#58675c;--c-soft:#ebeeeb}
+.c-village,.c-hotel{--c:var(--c-village);--c-ink:#58675c;--c-soft:#ebeeeb}
 .c-service,.c-transport{--c:var(--c-service);--c-ink:var(--c-service);--c-soft:#e4ecf3}
 
 /* ---------- map chrome hide (JS: .map-chrome.is-hidden + inert) ---------- */
